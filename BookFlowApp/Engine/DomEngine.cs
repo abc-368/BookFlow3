@@ -628,24 +628,26 @@ namespace BookFlow.App.Engine
                 if (order.Instrument != InstrumentName) continue;
 
                 var price = (decimal)order.Price;
+                var remaining = order.Quantity - order.FilledQuantity;
+                if (remaining <= 0) continue;
 
-                // If the price level for our order doesn't exist in the book, create it.
                 if (!book.TryGetValue(price, out var level))
                 {
                     level = PriceLevel.CreateEmpty(price);
                 }
 
-                // Update the count for the correct side
+                // Update the count for the correct side with sign convention:
+                // - Buy orders increment Bid Ord (+)
+                // - Sell orders decrement Ask Ord (-)
                 if (order.Side == 1) // 1 == Buy
                 {
-                    level.MyBidOrderCount += order.Quantity - order.FilledQuantity;
+                    level.MyBidOrderCount += remaining;
                 }
                 else // 2 == Sell
                 {
-                    level.MyAskOrderCount += order.Quantity - order.FilledQuantity;
+                    level.MyAskOrderCount -= remaining; // negative for shorts/asks
                 }
                 
-                // Add or update the level in the book
                 book[price] = level;
             }
         }

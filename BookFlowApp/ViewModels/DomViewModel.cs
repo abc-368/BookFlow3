@@ -704,13 +704,13 @@ namespace BookFlow.App.ViewModels
                 entryRow.OpenPositionPnL = UnrealizedPnL;
                 if (Position > 0)
                 {
-                    entryRow.MyBidOrderCount = Position;   // show +N in Bid Ord column
+                    entryRow.MyBidOrderCount = Position;   // show +N in Bid Ord column for long
                     entryRow.MyAskOrderCount = 0;
                 }
                 else
                 {
                     entryRow.MyBidOrderCount = 0;
-                    entryRow.MyAskOrderCount = Math.Abs(Position); // show N in Ask Ord column for short
+                    entryRow.MyAskOrderCount = -Math.Abs(Position); // show -N in Ask Ord column for short
                 }
             }
         }
