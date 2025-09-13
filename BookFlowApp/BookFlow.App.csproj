@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SharedLibrary.Standard\BookFlow.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- DevExpress packages for professional DOM grid -->
+  <ItemGroup>
+    <PackageReference Include="DevExpress.Wpf.Grid" Version="25.1.3" />
+    <PackageReference Include="DevExpress.Wpf.Themes.Office2019Colorful" Version="25.1.3" />
+    <PackageReference Include="System.Reactive" Version="6.0.1" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,240 @@
+<Window x:Class="BookFlow.App.Views.ControllerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="BookFlow Controller - High Performance DOM" Height="500" Width="650"
+        Background="#FF1E2A3A"
+        WindowStartupLocation="CenterScreen">
+    
+    <Window.Resources>
+        <!-- Professional button style -->
+        <Style x:Key="ProfessionalButtonStyle" TargetType="Button">
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#FF4A90E2" Offset="0"/>
+                        <GradientStop Color="#FF2E5F8A" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="3"
+                                BorderBrush="#FF5BA0F2"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#FF5BA0F2" Offset="0"/>
+                                            <GradientStop Color="#FF4A90E2" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                            <GradientStop Color="#FF2E5F8A" Offset="0"/>
+                                            <GradientStop Color="#FF1E4A6A" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#FF555555"/>
+                                <Setter Property="Foreground" Value="#FFAAAAAA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Status indicator style -->
+        <Style x:Key="StatusIndicatorStyle" TargetType="Ellipse">
+            <Setter Property="Width" Value="12"/>
+            <Setter Property="Height" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Label style -->
+        <Style x:Key="LabelStyle" TargetType="Label">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#FF34495E" BorderBrush="#FF4A90E2" BorderThickness="1" 
+                CornerRadius="5" Padding="10" Margin="0,0,0,10">
+            <StackPanel>
+                <TextBlock Text="BookFlow - High Performance DOM Trading" 
+                          Foreground="White" FontSize="16" FontWeight="Bold" 
+                          HorizontalAlignment="Center" Margin="0,0,0,5"/>
+                <TextBlock Text="Direct Connection Architecture - Eliminates Controller Bottleneck" 
+                          Foreground="#FF95A5A6" FontSize="10" 
+                          HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Connection Status Panel -->
+        <Border Grid.Row="1" Background="#FF2B3E50" BorderBrush="#FF4A90E2" BorderThickness="1" 
+                CornerRadius="5" Padding="10" Margin="0,0,0,10">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <Ellipse Name="connectionStatusIndicator" Style="{StaticResource StatusIndicatorStyle}" 
+                             Fill="{Binding ConnectionStatusBrush}" Margin="0,0,10,0"/>
+                    <Label Content="NT8DataEngine Status:" Style="{StaticResource LabelStyle}"/>
+                    <Label Content="{Binding ConnectionStatusText}" Style="{StaticResource LabelStyle}"
+                           Foreground="{Binding ConnectionStatusBrush}"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <Button Name="btnConnect" Content="Connect" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="100" Margin="0,0,10,0" Click="BtnConnect_Click"
+                            IsEnabled="{Binding CanConnect}"/>
+                    <Button Name="btnDisconnect" Content="Disconnect" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="100" IsEnabled="{Binding CanDisconnect}" Click="BtnDisconnect_Click"/>
+                    <Button Name="btnRefreshSystem" Content="Refresh System" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="120" Margin="10,0,0,0" Click="BtnRefreshSystem_Click"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- System Status Panel -->
+        <Border Grid.Row="2" Background="#FF2B3E50" BorderBrush="#FF4A90E2" BorderThickness="1" 
+                CornerRadius="5" Padding="10" Margin="0,0,0,10">
+            <StackPanel>
+                <Label Content="System Status:" Style="{StaticResource LabelStyle}" Margin="0,0,0,5"/>
+                
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Margin="0,0,20,5">
+                        <Label Content="Data Channel:" Style="{StaticResource LabelStyle}"/>
+                        <Ellipse Width="8" Height="8" Fill="{Binding DataChannelStatusBrush}" 
+                                VerticalAlignment="Center" Margin="5,0"/>
+                        <Label Content="{Binding DataChannelStatusText}" Style="{StaticResource LabelStyle}" 
+                               Foreground="{Binding DataChannelStatusBrush}" FontSize="10"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,5">
+                        <Label Content="Control Pipe:" Style="{StaticResource LabelStyle}"/>
+                        <Ellipse Width="8" Height="8" Fill="{Binding ControlPipeStatusBrush}" 
+                                VerticalAlignment="Center" Margin="5,0"/>
+                        <Label Content="{Binding ControlPipeStatusText}" Style="{StaticResource LabelStyle}" 
+                               Foreground="{Binding ControlPipeStatusBrush}" FontSize="10"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="0,0,20,0">
+                        <Label Content="Instruments:" Style="{StaticResource LabelStyle}"/>
+                        <Label Content="{Binding InstrumentCount}" Style="{StaticResource LabelStyle}" 
+                               Foreground="#FF4A90E2" Margin="5,0"/>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                        <Label Content="Active DOMs:" Style="{StaticResource LabelStyle}"/>
+                        <Label Content="{Binding ActiveDomCount}" Style="{StaticResource LabelStyle}" 
+                               Foreground="#FF4A90E2" Margin="5,0"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Instrument Selection Panel -->
+        <Border Grid.Row="3" Background="#FF2B3E50" BorderBrush="#FF4A90E2" BorderThickness="1" 
+                CornerRadius="5" Padding="10" Margin="0,0,0,10">
+            <StackPanel>
+                <Label Content="Available Instruments:" Style="{StaticResource LabelStyle}" Margin="0,0,0,5"/>
+                <ComboBox Name="cmbInstruments" Height="30" FontSize="12" 
+                          ItemsSource="{Binding AvailableInstruments}"
+                          SelectedItem="{Binding SelectedInstrument}"
+                          DisplayMemberPath="InstrumentName"
+                          IsEnabled="{Binding HasInstruments}"/>
+                
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button Name="btnLaunchDom" Content="Launch DOM" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="120" IsEnabled="{Binding CanLaunchDom}" Click="BtnLaunchDom_Click"/>
+                    <TextBlock Text="{Binding SelectedInstrumentDetails}" 
+                              Foreground="#FF95A5A6" FontSize="10" VerticalAlignment="Center" 
+                              Margin="15,0,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- System Log -->
+        <Border Grid.Row="4" Background="#FF2B3E50" BorderBrush="#FF4A90E2" BorderThickness="1" 
+                CornerRadius="5" Padding="5">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5,0,0,5">
+                    <Label Content="System Log:" Style="{StaticResource LabelStyle}"/>
+                    <CheckBox Name="chkAutoScroll" Content="Auto Scroll" Foreground="White" 
+                              FontSize="10" VerticalAlignment="Center" Margin="20,0,0,0"
+                              IsChecked="True"/>
+                    <Button Content="Clear Log" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="80" Height="20" FontSize="10" Margin="10,0,0,0"
+                            Click="BtnClearLog_Click"/>
+                </StackPanel>
+                
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                              Name="logScrollViewer">
+                    <TextBox Name="txtSystemLog" 
+                             Text="{Binding SystemLogText, Mode=OneWay}"
+                             TextWrapping="Wrap" 
+                             Background="#FF1A252F" Foreground="#FFEEEEEE" 
+                             FontFamily="Consolas" FontSize="10" Padding="5"
+                             BorderThickness="0"
+                             IsReadOnly="True"
+                             VerticalScrollBarVisibility="Hidden"
+                             HorizontalScrollBarVisibility="Hidden">
+                        <TextBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Copy" Click="CopyLog_Click" InputGestureText="Ctrl+C"/>
+                                <MenuItem Header="Select All" Click="SelectAllLog_Click" InputGestureText="Ctrl+A"/>
+                                <Separator/>
+                                <MenuItem Header="Clear Log" Click="BtnClearLog_Click"/>
+                            </ContextMenu>
+                        </TextBox.ContextMenu>
+                    </TextBox>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

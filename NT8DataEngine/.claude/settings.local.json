@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:ninjatrader.com)",
+      "Bash(dotnet build:*)",
+      "Bash(copy \"C:\\Users\\master\\source\\repos\\DomRunner\\NT8DataEngine\\bin\\Release\\net48\\NT8DataEngine.dll\" \"C:\\Users\\master\\Documents\\NinjaTrader 8\\bin\\Custom\"\")",
+      "Bash(copy:*)",
+      "Bash(cmd /c copy:*)",
+      "Bash(cp:*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "C:\\c\\Users\\master\\Documents\\NinjaTrader 8\\bin\\Custom"
+    ]
+  }
+}

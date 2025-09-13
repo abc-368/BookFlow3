@@ -1,0 +1,18 @@
+﻿<Window x:Class="BookFlow.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:BookFlow.App"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="800">
+    <Grid>
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="BookFlow Trading Application" FontSize="24" FontWeight="Bold" 
+                      HorizontalAlignment="Center" Margin="0,0,0,20"/>
+            <Button x:Name="TestDomButton" Content="Launch Test DOM Window" 
+                    Width="200" Height="40" FontSize="14"
+                    Click="TestDomButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
