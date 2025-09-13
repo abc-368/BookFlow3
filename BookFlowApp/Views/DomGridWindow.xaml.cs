@@ -90,27 +90,19 @@ namespace BookFlow.App.Views
         private void BottomCenterButton_Click(object sender, RoutedEventArgs e)
         {
             if (ViewModel == null) return;
-            // One-off center action
-            ViewModel.TriggerCenterAction();
+            // Use same logic as right-click on the top-left center button
+            ScrollToTopOfBook();
+            // Re-post once after layout to ensure it's centered visually
+            Dispatcher.BeginInvoke(new Action(ScrollToTopOfBook), System.Windows.Threading.DispatcherPriority.Render);
         }
         
         private void ClearButton_Click(object sender, RoutedEventArgs e)
         {
             if (ViewModel == null) return;
-            
-            // Ask for confirmation before clearing all data
-            var result = System.Windows.MessageBox.Show(
-                "This will clear all DOM data including price levels, volume profiles, and position information. Are you sure?",
-                "Clear DOM Data", 
-                MessageBoxButton.YesNo, 
-                MessageBoxImage.Question);
-                
-            if (result == MessageBoxResult.Yes)
-            {
-                // Clear all DOM data structures
-                ViewModel.ClearAllData();
-                System.Diagnostics.Debug.WriteLine("[Clear] DOM data structures cleared");
-            }
+
+            // Clear all DOM data structures immediately (no confirmation dialog)
+            ViewModel.ClearAllData();
+            System.Diagnostics.Debug.WriteLine("[Clear] DOM data structures cleared");
         }
         
         private void ScrollToTopOfBook()

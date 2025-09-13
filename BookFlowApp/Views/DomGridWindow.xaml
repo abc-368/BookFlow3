@@ -6,9 +6,10 @@
         xmlns:dxg="http://schemas.devexpress.com/winfx/2008/xaml/grid"
         xmlns:converters="clr-namespace:BookFlow.App.Converters"
         mc:Ignorable="d"
-        Title="{Binding WindowTitle}" Height="800" Width="850"
+        Title="{Binding WindowTitle}" Height="1600" Width="850"
         Background="#FF2B3E50"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        SizeToContent="Width">
     <Window.Resources>
         <!-- Import our converters -->
         <converters:NonZeroToVisibilityConverter x:Key="NonZeroToVisibilityConverter"/>
@@ -142,60 +143,82 @@
         
         <!-- Settings Toolbar -->
         <Border Grid.Row="0" Background="#FF34495E" Height="32">
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="3,0">
-                <!-- Settings Button -->
-                <Button x:Name="SettingsButton" Width="28" Height="22" Margin="3,5,1,5" 
-                        Style="{StaticResource SettingsButtonStyle}" Click="SettingsButton_Click">
-                    <Canvas Width="12" Height="12">
-                        <Rectangle Width="10" Height="2" Canvas.Left="1" Canvas.Top="2" Fill="White"/>
-                        <Rectangle Width="10" Height="2" Canvas.Left="1" Canvas.Top="5" Fill="White"/>
-                        <Rectangle Width="10" Height="2" Canvas.Left="1" Canvas.Top="8" Fill="White"/>
-                    </Canvas>
-                </Button>
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="3,0">
+                 <!-- Settings Button -->
+                 <Button x:Name="SettingsButton" Width="28" Height="22" Margin="3,5,1,5" 
+                         Style="{StaticResource SettingsButtonStyle}" Click="SettingsButton_Click">
+                     <Canvas Width="12" Height="12">
+                         <Rectangle Width="10" Height="2" Canvas.Left="1" Canvas.Top="2" Fill="White"/>
+                         <Rectangle Width="10" Height="2" Canvas.Left="1" Canvas.Top="5" Fill="White"/>
+                         <Rectangle Width="10" Height="2" Canvas.Left="1" Canvas.Top="8" Fill="White"/>
+                     </Canvas>
+                 </Button>
+                 
+                 <!-- Center Toggle: Unchecked => auto-center (Continuous); Checked => free float (None) -->
+                 <ToggleButton x:Name="CenterButton" Width="28" Height="22" Margin="1,5"
+                               Style="{StaticResource SettingsToggleButtonStyle}"
+                               Checked="CenterToggle_Checked" Unchecked="CenterToggle_Unchecked"
+                               MouseRightButtonDown="CenterButton_MouseRightButtonDown">
+                     <Canvas Width="12" Height="12">
+                         <Rectangle Width="10" Height="2" Canvas.Left="1" Canvas.Top="5" Fill="White"/>
+                         <Rectangle Width="1" Height="4" Canvas.Left="1" Canvas.Top="4" Fill="White"/>
+                         <Rectangle Width="1" Height="4" Canvas.Left="10" Canvas.Top="4" Fill="White"/>
+                     </Canvas>
+                 </ToggleButton>
+                 
+                 <!-- Clear Button -->
+                 <Button x:Name="ClearButton" Width="28" Height="22" Margin="1,5" 
+                         Style="{StaticResource SettingsButtonStyle}" Click="ClearButton_Click">
+                     <TextBlock Text="C" Foreground="White" FontSize="12" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                 </Button>
+                </StackPanel>
                 
-                <!-- Center Toggle: Unchecked => auto-center (Continuous); Checked => free float (None) -->
-                <ToggleButton x:Name="CenterButton" Width="28" Height="22" Margin="1,5"
-                              Style="{StaticResource SettingsToggleButtonStyle}"
-                              Checked="CenterToggle_Checked" Unchecked="CenterToggle_Unchecked"
-                              MouseRightButtonDown="CenterButton_MouseRightButtonDown">
-                    <Canvas Width="12" Height="12">
-                        <Rectangle Width="10" Height="2" Canvas.Left="1" Canvas.Top="5" Fill="White"/>
-                        <Rectangle Width="1" Height="4" Canvas.Left="1" Canvas.Top="4" Fill="White"/>
-                        <Rectangle Width="1" Height="4" Canvas.Left="10" Canvas.Top="4" Fill="White"/>
-                    </Canvas>
+                <!-- Right-aligned Settings Flyout Button -->
+                <ToggleButton x:Name="QuickSettingsButton" Grid.Column="1" Width="28" Height="22" Margin="0,5,6,5"
+                              Style="{StaticResource SettingsToggleButtonStyle}">
+                    <TextBlock Text="S" Foreground="White" FontSize="12" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </ToggleButton>
-                
-                <!-- Clear Button -->
-                <Button x:Name="ClearButton" Width="28" Height="22" Margin="1,5" 
-                        Style="{StaticResource SettingsButtonStyle}" Click="ClearButton_Click">
-                    <TextBlock Text="C" Foreground="White" FontSize="12" FontWeight="Bold"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Button>
-                
-                <!-- Volume Profile Toggle -->
-                <CheckBox x:Name="VolumeProfileToggle" Content="Vol" Foreground="White" 
-                         VerticalAlignment="Center" Margin="10,0,5,0" FontSize="10"
-                         IsChecked="{Binding Settings.EnableVolumeProfiles}"/>
-                
-                <!-- Logs Toggle -->
-                <CheckBox x:Name="LogsToggle" Content="Logs" Foreground="White" 
-                         VerticalAlignment="Center" Margin="10,0,5,0" FontSize="10"
-                         Checked="LogsToggle_Checked" Unchecked="LogsToggle_Unchecked"/>
-                
-                <!-- Row Count Display -->
-                <TextBlock Text="Rows:" Foreground="White" FontSize="10" 
-                          VerticalAlignment="Center" Margin="10,0,3,0"/>
-                <TextBox x:Name="RowCountTextBox" Width="50" Height="18" FontSize="10" 
-                         Text="{Binding Settings.MaxVisibleRows, UpdateSourceTrigger=PropertyChanged}"
-                         Background="#FF2B3E50" Foreground="White" BorderBrush="#FF4A90E2"/>
-                
-                <!-- Font Size Control -->
-                <TextBlock Text="Font:" Foreground="White" FontSize="10" 
-                          VerticalAlignment="Center" Margin="10,0,3,0"/>
-                <TextBox x:Name="FontSizeTextBox" Width="30" Height="18" FontSize="10" 
-                         Text="{Binding Settings.FontSize, UpdateSourceTrigger=PropertyChanged}"
-                         Background="#FF2B3E50" Foreground="White" BorderBrush="#FF4A90E2"/>
-            </StackPanel>
+
+                <!-- Popup for quick settings -->
+                <Popup Placement="Bottom" StaysOpen="False"
+                       PlacementTarget="{Binding ElementName=QuickSettingsButton}"
+                       IsOpen="{Binding IsChecked, ElementName=QuickSettingsButton, Mode=TwoWay}">
+                    <Border Background="#FF34495E" BorderBrush="#FF4A90E2" BorderThickness="1" CornerRadius="2" Padding="8">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Volume Profile Toggle -->
+                            <CheckBox x:Name="VolumeProfileToggle" Content="Vol" Foreground="White" 
+                                     VerticalAlignment="Center" Margin="0,0,8,0" FontSize="10"
+                                     IsChecked="{Binding Settings.EnableVolumeProfiles}"/>
+
+                            <!-- Logs Toggle -->
+                            <CheckBox x:Name="LogsToggle" Content="Logs" Foreground="White" 
+                                     VerticalAlignment="Center" Margin="0,0,12,0" FontSize="10"
+                                     Checked="LogsToggle_Checked" Unchecked="LogsToggle_Unchecked"/>
+
+                            <!-- Row Count Display -->
+                            <TextBlock Text="Rows:" Foreground="White" FontSize="10" 
+                                      VerticalAlignment="Center" Margin="0,0,3,0"/>
+                            <TextBox x:Name="RowCountTextBox" Width="50" Height="18" FontSize="10" 
+                                     Text="{Binding Settings.MaxVisibleRows, UpdateSourceTrigger=PropertyChanged}"
+                                     Background="#FF2B3E50" Foreground="White" BorderBrush="#FF4A90E2" Margin="0,0,12,0"/>
+
+                            <!-- Font Size Control -->
+                            <TextBlock Text="Font:" Foreground="White" FontSize="10" 
+                                      VerticalAlignment="Center" Margin="0,0,3,0"/>
+                            <TextBox x:Name="FontSizeTextBox" Width="30" Height="18" FontSize="10" 
+                                     Text="{Binding Settings.FontSize, UpdateSourceTrigger=PropertyChanged}"
+                                     Background="#FF2B3E50" Foreground="White" BorderBrush="#FF4A90E2"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+            </Grid>
         </Border>
         
         <!-- Header with market info -->
@@ -237,7 +260,7 @@
         
         <!-- DOM Grid -->
         <Border Grid.Row="2" Background="#FF1A252F" BorderBrush="#FF4A90E2" 
-                BorderThickness="1" Margin="5">
+                BorderThickness="1" Margin="0" VerticalAlignment="Stretch">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -301,10 +324,10 @@
                 
                 <!-- DevExpress DOM Grid -->
                 <dxg:GridControl Grid.Row="1" x:Name="DomGridControl" ItemsSource="{Binding DomRows}" AutoGenerateColumns="None"
-                                Background="#FF1E2A3A" Foreground="White"
-                                BorderBrush="#FF34495E" BorderThickness="1"
-                                ScrollViewer.VerticalScrollBarVisibility="Hidden"
-                                ScrollViewer.HorizontalScrollBarVisibility="Hidden">
+                                 Background="#FF1E2A3A" Foreground="White"
+                                 BorderBrush="#FF34495E" BorderThickness="1"
+                                 ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Hidden">
                     <dxg:GridControl.View>
                         <dxg:TableView x:Name="DomTableView" 
                                       ShowGroupPanel="False" 

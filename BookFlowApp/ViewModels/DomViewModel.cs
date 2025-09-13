@@ -334,22 +334,6 @@ namespace BookFlow.App.ViewModels
             _authoritativeBestBid = update.BestBid;
             _authoritativeBestAsk = update.BestAsk;
 
-            // Perform one-time initial center in loose mode once we have a real price
-            if (!_initialCenterDone && Settings.CenterMode == CenterMode.None)
-            {
-                var bid = BestBid.GetValueOrDefault();
-                var ask = BestAsk.GetValueOrDefault();
-                var last = LastPrice.GetValueOrDefault();
-                bool haveMid = BestBid.HasValue && BestAsk.HasValue && bid > 0 && ask > 0;
-                bool haveSide = (BestBid.HasValue && bid > 0) || (BestAsk.HasValue && ask > 0) || (LastPrice.HasValue && last > 0);
-                if (haveMid || haveSide)
-                {
-                    // Center the view once without switching to auto mode
-                    App.Current?.Dispatcher?.BeginInvoke(() => CenterViewOnCurrentMarket(), DispatcherPriority.Background);
-                    _initialCenterDone = true;
-                }
-            }
-
             if (App.Current?.Dispatcher?.CheckAccess() == false)
             {
                 App.Current.Dispatcher.BeginInvoke(() =>
@@ -358,6 +342,8 @@ namespace BookFlow.App.ViewModels
                         UpdatePriceLevelsOptimized(update.VisibleLevels);
                     UpdateOrderAnnotations();
                     UpdatePositionAnnotations();
+                    // Perform one-time initial center after we have rows
+                    TryOneTimeInitialCenter();
                 }, System.Windows.Threading.DispatcherPriority.Background);
             }
             else
@@ -366,6 +352,31 @@ namespace BookFlow.App.ViewModels
                     UpdatePriceLevelsOptimized(update.VisibleLevels);
                 UpdateOrderAnnotations();
                 UpdatePositionAnnotations();
+                // Perform one-time initial center after we have rows
+                TryOneTimeInitialCenter();
+            }
+        }
+
+        // Ensures the first time we have data and rows, we center on top-of-book in loose mode
+        private void TryOneTimeInitialCenter()
+        {
+            if (_initialCenterDone || Settings.CenterMode != CenterMode.None)
+                return;
+
+            if (DomRows.Count == 0) return;
+
+            var bid = BestBid.GetValueOrDefault();
+            var ask = BestAsk.GetValueOrDefault();
+            var last = LastPrice.GetValueOrDefault();
+            bool haveMid = BestBid.HasValue && BestAsk.HasValue && bid > 0 && ask > 0;
+            bool haveSide = (BestBid.HasValue && bid > 0) || (BestAsk.HasValue && ask > 0) || (LastPrice.HasValue && last > 0);
+            if (haveMid || haveSide)
+            {
+                // Defer centering until after layout/render so rows are realized
+                System.Windows.Application.Current?.Dispatcher?.BeginInvoke(
+                    new Action(() => CenterViewOnCurrentMarket()),
+                    System.Windows.Threading.DispatcherPriority.Render);
+                _initialCenterDone = true;
             }
         }
 
@@ -740,6 +751,16 @@ namespace BookFlow.App.ViewModels
 
         #endregion
 
+        #region INotifyPropertyChanged
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        #endregion
+
         #region Public Methods
 
         /// <summary>
@@ -823,17 +844,6 @@ namespace BookFlow.App.ViewModels
                 LogViewModel?.LogEngineEvent("TRADE-ERROR", $"Cancel orders exception: {ex.Message}");
                 throw;
             }
-        }
-
-        #endregion
-
-        #region INotifyPropertyChanged
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
         #endregion
