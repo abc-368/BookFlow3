@@ -674,42 +674,43 @@ namespace BookFlow.App.ViewModels
             if (DomRows.Count == 0)
                 return;
 
-            // Clear previous position PnL marker and position overlays first
-            foreach (var row in DomRows)
+            // If flat or no average price, clear PnL and overlays for every row
+            if (Position == 0 || _averagePrice == 0)
             {
-                if (row.OpenPositionPnL != 0 && Position == 0)
+                foreach (var row in DomRows)
                 {
                     row.OpenPositionPnL = 0;
+                    row.PositionBidMarker = 0;
+                    row.PositionAskMarker = 0;
                 }
-                // clear markers; will be set on current entry row below
+                return;
+            }
+
+            // Compute hypothetical PnL for fully exiting at each row's price
+            foreach (var row in DomRows)
+            {
+                var exitPrice = row.Price;
+                // (exit - avg) * signed position * point value
+                var pnl = (exitPrice - _averagePrice) * Position * DefaultPointValue;
+                row.OpenPositionPnL = pnl;
+                // Clear markers; will set only at entry row below
                 row.PositionBidMarker = 0;
                 row.PositionAskMarker = 0;
             }
 
-            if (Position == 0)
-                return;
-
-            // Find entry row by average price tolerance (exact match fallback)
-            var entryRow = DomRows.FirstOrDefault(r => r.Price == _averagePrice);
-            if (entryRow == null)
-            {
-                // Fallback: closest price
-                entryRow = DomRows.OrderBy(r => Math.Abs(r.Price - _averagePrice)).FirstOrDefault();
-            }
+            // Overlay position marker at the entry/average price row (closest match)
+            var entryRow = DomRows.FirstOrDefault(r => r.Price == _averagePrice) ??
+                           DomRows.OrderBy(r => Math.Abs(r.Price - _averagePrice)).FirstOrDefault();
             if (entryRow != null)
             {
-                // Annotate PnL and overlay position marker on the proper column
-                entryRow.OpenPositionPnL = UnrealizedPnL;
                 if (Position > 0)
                 {
                     // Long: show +N on Bid column overlay
                     entryRow.PositionBidMarker = Position;
-                    entryRow.PositionAskMarker = 0;
                 }
                 else
                 {
                     // Short: show -N on Ask column overlay (UI prefixes '-')
-                    entryRow.PositionBidMarker = 0;
                     entryRow.PositionAskMarker = System.Math.Abs(Position);
                 }
             }

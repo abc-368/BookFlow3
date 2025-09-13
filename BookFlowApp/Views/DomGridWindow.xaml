@@ -19,6 +19,7 @@
         <converters:DynamicPriceDisplayConverter x:Key="DynamicPriceDisplayConverter"/>
         <converters:VolumeDisplayConverter x:Key="VolumeDisplayConverter"/>
         <converters:PnLDisplayConverter x:Key="PnLDisplayConverter"/>
+        <converters:PnLForegroundConverter x:Key="PnLForegroundConverter"/>
         <converters:VolumeProfileVisibilityConverter x:Key="VolumeProfileVisibilityConverter"/>
         <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
         <converters:GreaterThanZeroToBooleanConverter x:Key="GreaterThanZeroToBooleanConverter"/>
@@ -398,9 +399,11 @@
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
-                                        <TextBlock Text="{Binding RowData.Row.OpenPositionPnL, Converter={StaticResource PnLDisplayConverter}}" 
-                                                  Foreground="White" FontSize="8"
-                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock 
+                                            Text="{Binding RowData.Row.OpenPositionPnL, Converter={StaticResource PnLDisplayConverter}}"
+                                            Foreground="{Binding RowData.Row.OpenPositionPnL, Converter={StaticResource PnLForegroundConverter}}"
+                                            FontSize="8"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                 </DataTemplate>
                             </dxg:GridColumn.CellTemplate>

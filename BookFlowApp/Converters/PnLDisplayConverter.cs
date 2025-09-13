@@ -6,7 +6,8 @@ namespace BookFlow.App.Converters
 {
     /// <summary>
     /// Converter for P&L display that shows empty string when value is 0,
-    /// and formatted currency when there's an actual position P&L.
+    /// and formatted numeric text when there's an actual position P&L.
+    /// Uses two decimal places and a leading '+' for positives.
     /// </summary>
     public class PnLDisplayConverter : IValueConverter
     {
@@ -14,14 +15,12 @@ namespace BookFlow.App.Converters
         {
             if (value is decimal pnl)
             {
-                // Show nothing if P&L is exactly 0 (flat position)
                 if (pnl == 0m)
                     return string.Empty;
-                
-                // Show formatted P&L with + for positive, - for negative
-                return pnl > 0 ? $"+{pnl:F0}" : pnl.ToString("F0");
+
+                // Two decimals, include leading '+' for positives
+                return pnl > 0 ? $"+{pnl:F2}" : pnl.ToString("F2");
             }
-            
             return string.Empty;
         }
 
