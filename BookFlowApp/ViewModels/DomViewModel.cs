@@ -710,7 +710,7 @@ namespace BookFlow.App.ViewModels
                 else
                 {
                     entryRow.MyBidOrderCount = 0;
-                    entryRow.MyAskOrderCount = -Math.Abs(Position); // show -N in Ask Ord column for short
+                    entryRow.MyAskOrderCount = Math.Abs(Position); // positive; XAML adds '-' sign on display
                 }
             }
         }

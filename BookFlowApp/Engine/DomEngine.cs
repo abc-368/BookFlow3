@@ -645,7 +645,7 @@ namespace BookFlow.App.Engine
                 }
                 else // 2 == Sell
                 {
-                    level.MyAskOrderCount -= remaining; // negative for shorts/asks
+                    level.MyAskOrderCount += remaining; // keep positive; UI formats with '-'
                 }
                 
                 book[price] = level;
