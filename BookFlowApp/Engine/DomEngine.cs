@@ -78,6 +78,9 @@ namespace BookFlow.App.Engine
         private decimal? _priceScaleBaseline = null; // baseline raw price observed
         private decimal _priceScaleCorrection = 1m;  // 1=normal, 2=double raw, 0.5=half raw
         private const decimal ScaleTolerance = 0.02m; // 2% tolerance
+        private int _scaleHalfHits = 0;
+        private int _scaleDoubleHits = 0;
+        private const int ScaleConfirmThreshold = 5; // require a few hits before switching
 
         public string InstrumentName { get; }
         public byte TickerId { get; }
@@ -244,8 +247,8 @@ namespace BookFlow.App.Engine
             var rawPrice = (decimal)message.Price;
             // Dynamically detect and update price precision from observed prices
             UpdatePricePrecisionFromObservedPrice(rawPrice);
-            DetectAndAdjustScale(rawPrice);
-            var price = AlignToTick(ApplyScale(rawPrice));
+            // Do not apply auto scale correction; use raw prices aligned to tick size
+            var price = AlignToTick(rawPrice);
 
             switch (dataType)
             {
@@ -268,8 +271,8 @@ namespace BookFlow.App.Engine
             var rawPrice = (decimal)message.Price;
             // Dynamically detect and update price precision from observed prices
             UpdatePricePrecisionFromObservedPrice(rawPrice);
-            DetectAndAdjustScale(rawPrice);
-            var price = AlignToTick(ApplyScale(rawPrice));
+            // Do not apply auto scale correction; use raw prices aligned to tick size
+            var price = AlignToTick(rawPrice);
             var volume = message.Volume;
             
             var book = side == L2MarketSide.Bid ? _bidBook : _askBook;
@@ -447,34 +450,6 @@ namespace BookFlow.App.Engine
         {
             var candidateBestBid = _bidBook.Keys.LastOrDefault();
             var candidateBestAsk = _askBook.Keys.FirstOrDefault();
-            
-            // Scale guard: if we already have a reference center and the new center
-            // suddenly flips to ~half or ~double, adjust scale and reset books.
-            if (_bestBid.HasValue && _bestAsk.HasValue && candidateBestBid > 0 && candidateBestAsk > 0)
-            {
-                var prevCenter = (_bestBid.Value + _bestAsk.Value) / 2m;
-                var newCenter = (candidateBestBid + candidateBestAsk) / 2m;
-                if (prevCenter > 0 && newCenter > 0)
-                {
-                    var ratio = newCenter / prevCenter;
-                    if (Math.Abs(ratio - 0.5m) <= ScaleTolerance && _priceScaleCorrection != 2m)
-                    {
-                        // Observed prices halved vs prior center → correct by doubling
-                        _priceScaleCorrection = 2m;
-                        _priceScaleBaseline = null; // re-baseline
-                        ClearAllData();
-                        return;
-                    }
-                    if (Math.Abs(ratio - 2m) <= ScaleTolerance && _priceScaleCorrection != 0.5m)
-                    {
-                        // Observed prices doubled vs prior center → correct by halving
-                        _priceScaleCorrection = 0.5m;
-                        _priceScaleBaseline = null; // re-baseline
-                        ClearAllData();
-                        return;
-                    }
-                }
-            }
             
             // Validate market integrity - best bid must be lower than best ask
             if (candidateBestBid > 0 && candidateBestAsk > 0 && candidateBestBid >= candidateBestAsk)
@@ -986,6 +961,12 @@ namespace BookFlow.App.Engine
                 // Clear snapshots
                 _readerSnapshot = CreateEmptySnapshot();
                 _writerSnapshot = CreateEmptySnapshot();
+
+                // Reset any scale auto-detection state
+                _priceScaleCorrection = 1m;
+                _priceScaleBaseline = null;
+                _scaleHalfHits = 0;
+                _scaleDoubleHits = 0;
             }
             
             // Publish empty ladder update to clear UI
@@ -1200,74 +1181,6 @@ namespace BookFlow.App.Engine
             _snapshotLock?.Dispose();
         }
         
-        // Apply current scale correction to an observed raw price
-        private decimal ApplyScale(decimal rawPrice)
-        {
-            try
-            {
-                return rawPrice * _priceScaleCorrection;
-            }
-            catch
-            {
-                return rawPrice;
-            }
-        }
-        
-        // Detect common scale faults (half/double) and adjust correction factor
-        private void DetectAndAdjustScale(decimal rawPrice)
-        {
-            if (rawPrice <= 0) return;
-            if (!_priceScaleBaseline.HasValue)
-            {
-                _priceScaleBaseline = rawPrice;
-                return;
-            }
-
-            var baseline = _priceScaleBaseline.Value;
-            if (baseline <= 0) { _priceScaleBaseline = rawPrice; return; }
-
-            var ratio = rawPrice / baseline;
-
-            if (Math.Abs(ratio - 0.5m) <= ScaleTolerance && _priceScaleCorrection != 2m)
-            {
-                // Feed suddenly halves prices → correct by doubling
-                _priceScaleCorrection = 2m;
-                _priceScaleBaseline = null; // force re-baseline at new scale
-                ClearAllData();
-            }
-            else if (Math.Abs(ratio - 2m) <= ScaleTolerance && _priceScaleCorrection != 0.5m)
-            {
-                // Feed suddenly doubles prices → correct by halving
-                _priceScaleCorrection = 0.5m;
-                _priceScaleBaseline = null; // force re-baseline at new scale
-                ClearAllData();
-            }
-            else if (ratio > 0.8m && ratio < 1.25m)
-            {
-                // Normal drift → update baseline slowly to follow market
-                _priceScaleBaseline = rawPrice;
-            }
-        }
-        
-        // Increase price precision based on observed price decimals (never decrease to prevent UI thrash)
-        private void UpdatePricePrecisionFromObservedPrice(decimal rawPrice)
-        {
-            try
-            {
-                if (rawPrice <= 0) return;
-                // Determine decimals from tick size and price observation
-                int fromTick = GetDecimalPlacesForStep(_tickSize);
-                int fromPrice = DetectDecimalPlaces(rawPrice);
-                int desired = Math.Max(fromTick, fromPrice);
-                desired = Math.Max(0, Math.Min(desired, 6)); // clamp 0..6
-                if (desired > _priceDecimalPlaces)
-                {
-                    _priceDecimalPlaces = desired;
-                }
-            }
-            catch { /* ignore */ }
-        }
-
         // Align price to the configured tick size grid
         private decimal AlignToTick(decimal price)
         {
@@ -1281,6 +1194,24 @@ namespace BookFlow.App.Engine
             {
                 return price;
             }
+        }
+
+        // Increase price precision based on observed price decimals (never decrease to prevent UI thrash)
+        private void UpdatePricePrecisionFromObservedPrice(decimal rawPrice)
+        {
+            try
+            {
+                if (rawPrice <= 0) return;
+                int fromTick = GetDecimalPlacesForStep(_tickSize);
+                int fromPrice = DetectDecimalPlaces(rawPrice);
+                int desired = Math.Max(fromTick, fromPrice);
+                desired = Math.Max(0, Math.Min(desired, 6)); // clamp 0..6
+                if (desired > _priceDecimalPlaces)
+                {
+                    _priceDecimalPlaces = desired;
+                }
+            }
+            catch { /* ignore */ }
         }
     }
 }
