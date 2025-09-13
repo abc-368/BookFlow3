@@ -694,8 +694,34 @@ namespace BookFlow.App.Models
                 OnPropertyChanged(nameof(VolumeProfile)); // VolumeProfile is computed
             }
             
-            BidDepth = priceLevel.BidVolume;  // Current bid volume = depth
-            AskDepth = priceLevel.AskVolume;  // Current ask volume = depth
+            // Compute snapshot deltas for depth columns and enforce mutual exclusivity
+            var prevBidDepth = _bidDepth;
+            var prevAskDepth = _askDepth;
+            var nextBidDepth = priceLevel.BidVolume;  // Current bid volume = depth
+            var nextAskDepth = priceLevel.AskVolume;  // Current ask volume = depth
+
+            // Enforce mutual exclusivity on a row: a price cannot have both bid and ask depth at the same time
+            if (nextBidDepth > 0 && nextAskDepth > 0)
+            {
+                // Prefer the larger side, clear the smaller
+                if (nextBidDepth >= nextAskDepth)
+                    nextAskDepth = 0;
+                else
+                    nextBidDepth = 0;
+            }
+
+            // Set snapshots as delta (empty treated as 0 naturally by arithmetic)
+            var bidDelta = nextBidDepth - prevBidDepth;   // e.g., 50 -> 20 => -30; 10 -> 0 => -10
+            var askDelta = nextAskDepth - prevAskDepth;   // e.g., 0 -> 15 => +15
+            if (bidDelta != 0)
+                BidSnapshot = bidDelta;
+            if (askDelta != 0)
+                AskSnapshot = askDelta;
+
+            // Apply updated depths after computing snapshots
+            BidDepth = nextBidDepth;
+            AskDepth = nextAskDepth;
+
             LastTradeAtBid = priceLevel.BidSideTradedVolume;
             LastTradeAtAsk = priceLevel.AskSideTradedVolume;
             LastTradeAtBidBurst = priceLevel.BidSideTradedVolume; // Market sells hitting bids

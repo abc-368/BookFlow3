@@ -242,6 +242,8 @@ namespace BookFlow.App.Engine
             var dataType = (L1MarketDataType)message.MarketDataType;
             // Use raw price to detect scale, then apply correction
             var rawPrice = (decimal)message.Price;
+            // Dynamically detect and update price precision from observed prices
+            UpdatePricePrecisionFromObservedPrice(rawPrice);
             DetectAndAdjustScale(rawPrice);
             var price = AlignToTick(ApplyScale(rawPrice));
 
@@ -264,6 +266,8 @@ namespace BookFlow.App.Engine
             var operation = (L2Operation)message.Operation;
             var side = (L2MarketSide)message.MarketDataType;
             var rawPrice = (decimal)message.Price;
+            // Dynamically detect and update price precision from observed prices
+            UpdatePricePrecisionFromObservedPrice(rawPrice);
             DetectAndAdjustScale(rawPrice);
             var price = AlignToTick(ApplyScale(rawPrice));
             var volume = message.Volume;
@@ -1245,6 +1249,25 @@ namespace BookFlow.App.Engine
             }
         }
         
+        // Increase price precision based on observed price decimals (never decrease to prevent UI thrash)
+        private void UpdatePricePrecisionFromObservedPrice(decimal rawPrice)
+        {
+            try
+            {
+                if (rawPrice <= 0) return;
+                // Determine decimals from tick size and price observation
+                int fromTick = GetDecimalPlacesForStep(_tickSize);
+                int fromPrice = DetectDecimalPlaces(rawPrice);
+                int desired = Math.Max(fromTick, fromPrice);
+                desired = Math.Max(0, Math.Min(desired, 6)); // clamp 0..6
+                if (desired > _priceDecimalPlaces)
+                {
+                    _priceDecimalPlaces = desired;
+                }
+            }
+            catch { /* ignore */ }
+        }
+
         // Align price to the configured tick size grid
         private decimal AlignToTick(decimal price)
         {
