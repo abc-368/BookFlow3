@@ -11,10 +11,10 @@
 
   <ItemGroup>
     <Reference Include="NinjaTrader.Core">
-      <HintPath>$(ProgramFiles)\NinjaTrader 8\bin\NinjaTrader.Core.dll</HintPath>
+      <HintPath>C:\Program Files\NinjaTrader 8\bin\NinjaTrader.Core.dll</HintPath>
     </Reference>
     <Reference Include="NinjaTrader.Gui">
-      <HintPath>$(ProgramFiles)\NinjaTrader 8\bin\NinjaTrader.Gui.dll</HintPath>
+      <HintPath>C:\Program Files\NinjaTrader 8\bin\NinjaTrader.Gui.dll</HintPath>
     </Reference>
     <Reference Include="NinjaTrader.Custom">
       <HintPath>$(USERPROFILE)\Documents\NinjaTrader 8\bin\Custom\NinjaTrader.Custom.dll</HintPath>

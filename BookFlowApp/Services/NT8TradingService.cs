@@ -33,7 +33,7 @@ namespace BookFlow.App.Services
         private readonly SynchronizationContext? _uiContext;
 
         // Event pipe for live order/position updates
-        private readonly EventPipeClient _eventClient = new EventPipeClient();
+        private readonly EventTcpClient _eventClient = new EventTcpClient();
         private bool _eventClientConnected;
         private DateTime _lastRefreshUtc = DateTime.MinValue; // simple throttle for burst events
 
@@ -102,10 +102,6 @@ namespace BookFlow.App.Services
         {
             try
             {
-                var now = DateTime.UtcNow;
-                if ((now - _lastRefreshUtc).TotalMilliseconds < 100) return; // light throttle for burst events
-                _lastRefreshUtc = now;
-
                 var snapshot = await _controlPipeClient.RequestPortfolioStateAsync();
                 if (snapshot == null) return;
                 ExecuteOnUi(() =>
@@ -119,17 +115,30 @@ namespace BookFlow.App.Services
                             _workingOrders.Add(o);
                         }
                     }
-                    _positions.Clear();
+
+                    // Update positions using AddOrUpdate for thread safety and to avoid clearing
                     if (snapshot.Positions != null)
                     {
                         foreach (var pos in snapshot.Positions)
                         {
                             var snap = new PositionSnapshot(pos.Instrument, 0, pos.Quantity, (decimal)pos.AveragePrice, (decimal)pos.UnrealizedPnL, (decimal)pos.RealizedPnL, 0, 0, 0, pos.LastUpdateTime);
-                            _positions.TryAdd(pos.Instrument, snap);
+                            _positions.AddOrUpdate(pos.Instrument, snap, (key, old) => snap);
                         }
                     }
+
+                    // Clear positions that are no longer in the snapshot
+                    var instrumentsInSnapshot = snapshot.Positions?.Select(p => p.Instrument).ToList() ?? new List<string>();
+                    foreach (var key in _positions.Keys)
+                    {
+                        if (!instrumentsInSnapshot.Contains(key))
+                        {
+                            _positions.TryRemove(key, out _);
+                        }
+                    }
+
                     _isTradingEnabled = snapshot.Account != null && !string.IsNullOrEmpty(snapshot.Account.AccountName);
-                    OrderBookChanged?.Invoke(); PortfolioChanged?.Invoke();
+                    OrderBookChanged?.Invoke(); 
+                    PortfolioChanged?.Invoke();
                 });
             }
             catch { }
