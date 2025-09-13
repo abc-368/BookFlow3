@@ -674,19 +674,16 @@ namespace BookFlow.App.ViewModels
             if (DomRows.Count == 0)
                 return;
 
-            // Clear previous position markup in order columns (only those rows previously marked)
+            // Clear previous position PnL marker and position overlays first
             foreach (var row in DomRows)
             {
-                // Only clear the synthetic position display; leave real working order counts (BidOrdersInfo/AskOrdersInfo) intact
                 if (row.OpenPositionPnL != 0 && Position == 0)
                 {
                     row.OpenPositionPnL = 0;
                 }
-                if (Position == 0)
-                {
-                    row.MyBidOrderCount = 0;
-                    row.MyAskOrderCount = 0;
-                }
+                // clear markers; will be set on current entry row below
+                row.PositionBidMarker = 0;
+                row.PositionAskMarker = 0;
             }
 
             if (Position == 0)
@@ -701,16 +698,19 @@ namespace BookFlow.App.ViewModels
             }
             if (entryRow != null)
             {
+                // Annotate PnL and overlay position marker on the proper column
                 entryRow.OpenPositionPnL = UnrealizedPnL;
                 if (Position > 0)
                 {
-                    entryRow.MyBidOrderCount = Position;   // show +N in Bid Ord column for long
-                    entryRow.MyAskOrderCount = 0;
+                    // Long: show +N on Bid column overlay
+                    entryRow.PositionBidMarker = Position;
+                    entryRow.PositionAskMarker = 0;
                 }
                 else
                 {
-                    entryRow.MyBidOrderCount = 0;
-                    entryRow.MyAskOrderCount = Math.Abs(Position); // positive; XAML adds '-' sign on display
+                    // Short: show -N on Ask column overlay (UI prefixes '-')
+                    entryRow.PositionBidMarker = 0;
+                    entryRow.PositionAskMarker = System.Math.Abs(Position);
                 }
             }
         }

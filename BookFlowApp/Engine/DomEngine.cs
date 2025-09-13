@@ -495,8 +495,12 @@ namespace BookFlow.App.Engine
         
         private void OnOrderBookChanged()
         {
-            System.Diagnostics.Debug.WriteLine("[DomEngine] OnOrderBookChanged called");
-            UpdateSnapshot(null);
+            try
+            {
+                // Force a ladder publish quickly to reflect order changes/fills without waiting on market data ticks
+                PublishLadderUpdate();
+            }
+            catch { }
         }
         
         private void ProcessPortfolioUpdate(PortfolioStateMessage portfolio)

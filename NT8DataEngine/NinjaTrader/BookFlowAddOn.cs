@@ -546,10 +546,11 @@ namespace NinjaTrader.NinjaScript.AddOns
                 foreach (var pos in account.Positions)
                 {
                     if (pos.Quantity == 0) continue;
+                    var signedQty = pos.MarketPosition == MarketPosition.Short ? -System.Math.Abs(pos.Quantity) : System.Math.Abs(pos.Quantity);
                     response.Positions.Add(new PositionMessage
                     {
                         Instrument = pos.Instrument.FullName,
-                        Quantity = pos.Quantity,
+                        Quantity = signedQty,
                         AveragePrice = pos.AveragePrice,
                         UnrealizedPnL = pos.GetUnrealizedProfitLoss(PerformanceUnit.Currency),
                         RealizedPnL = 0,

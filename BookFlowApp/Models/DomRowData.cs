@@ -53,6 +53,10 @@ namespace BookFlow.App.Models
         private bool _isTopBid = false;
         private bool _isTopAsk = false;
 
+        // Position markers to overlay on order counts without overriding working orders
+        private int _positionBidMarker = 0; // long position marker on bid column
+        private int _positionAskMarker = 0; // short position marker on ask column (positive value; UI formats with '-')
+
         public decimal Price
         {
             get => _price;
@@ -447,6 +451,7 @@ namespace BookFlow.App.Models
                 {
                     _myBidOrderCount = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(DisplayBidOrderCount));
                 }
             }
         }
@@ -460,9 +465,42 @@ namespace BookFlow.App.Models
                 {
                     _myAskOrderCount = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(DisplayAskOrderCount));
                 }
             }
         }
+
+        public int PositionBidMarker
+        {
+            get => _positionBidMarker;
+            set
+            {
+                if (_positionBidMarker != value)
+                {
+                    _positionBidMarker = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(DisplayBidOrderCount));
+                }
+            }
+        }
+
+        public int PositionAskMarker
+        {
+            get => _positionAskMarker;
+            set
+            {
+                if (_positionAskMarker != value)
+                {
+                    _positionAskMarker = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(DisplayAskOrderCount));
+                }
+            }
+        }
+
+        // Display counts that combine working orders and position markers
+        public int DisplayBidOrderCount => (_myBidOrderCount + _positionBidMarker);
+        public int DisplayAskOrderCount => (_myAskOrderCount + _positionAskMarker);
 
         public bool HasL1Update
         {
