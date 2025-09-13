@@ -190,7 +190,7 @@ namespace BookFlow.App.ViewModels
             if (existing != null) { existing.Window?.Activate(); return; }
             var tradingService = new NT8TradingService();
             // Use the TickerId provided by NT8 to filter stream correctly
-            var domEngine = new DomEngine(_selectedInstrument.InstrumentName, _selectedInstrument.TickerId, tradingService, (decimal)_selectedInstrument.TickSize, new DomSettings());
+            var domEngine = new DomEngine(_selectedInstrument.InstrumentName, _selectedInstrument.TickerId, tradingService, (decimal)_selectedInstrument.TickSize, (decimal)_selectedInstrument.PointValue, new DomSettings());
             _ = domEngine.StartAsync(_sharedDataFeed);
             var vm = new DomViewModel(domEngine, tradingService);
             var win = new DomGridWindow(vm) { Title = $"DOM - {_selectedInstrument.InstrumentName}" };

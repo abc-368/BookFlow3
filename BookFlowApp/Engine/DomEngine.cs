@@ -37,11 +37,12 @@ namespace BookFlow.App.Engine
         private decimal? _bestAsk;
         private decimal? _lastTradedPrice;
         private long _lastTradedVolume;
-        private decimal _tickSize = 0.25m; // Default, will be updated from instrument info
+        private decimal _tickSize = 0.25m; // Provided from controller
+        private decimal _pointValue = 50m;  // Provided from controller
         
         // Initialization flags
         private bool _hasReceivedFirstTrade = false;
-        private int _priceDecimalPlaces = 2; // Default, will be detected from first trade
+        private int _priceDecimalPlaces = 2; // Display precision
         
         // Track when actual market data changes occur to prevent spam logging
         private long _lastMarketDataChangeSequence = 0;
@@ -77,6 +78,8 @@ namespace BookFlow.App.Engine
         public byte TickerId { get; }
         public bool IsConnected => _isConnected;
         public int PriceDecimalPlaces => _priceDecimalPlaces;
+        public decimal TickSize => _tickSize;
+        public decimal PointValue => _pointValue;
         
         public event EventHandler<bool>? ConnectionStatusChanged;
         
@@ -84,15 +87,18 @@ namespace BookFlow.App.Engine
         public IObservable<LadderUpdate> LadderUpdates { get; }
         public IObservable<StatisticsUpdate> StatisticsUpdates { get; }
         
-        public DomEngine(string instrumentName, byte tickerId, ITradingService tradingService, decimal tickSize = 0.25m, DomSettings? settings = null)
+        public DomEngine(string instrumentName, byte tickerId, ITradingService tradingService, decimal tickSize = 0.25m, decimal pointValue = 50m, DomSettings? settings = null)
         {
             InstrumentName = instrumentName ?? throw new ArgumentNullException(nameof(instrumentName));
             TickerId = tickerId;
             _tradingService = tradingService;
-            _tickSize = tickSize;
+            _tickSize = tickSize > 0 ? tickSize : 0.25m;
+            _pointValue = pointValue > 0 ? pointValue : 50m;
             _settings = settings ?? new DomSettings();
+
+            // Initialize display precision from tick-size so ladder advances on correct grid
+            _priceDecimalPlaces = Math.Max(_priceDecimalPlaces, GetDecimalPlacesForStep(_tickSize));
             
-            // Apply settings to configuration
             UpdateConfigurationFromSettings();
             
             // Initialize empty snapshots
@@ -119,13 +125,11 @@ namespace BookFlow.App.Engine
         {
             if (_disposed)
                 return false;
-                
+            
             _dataFeed = dataFeed ?? throw new ArgumentNullException(nameof(dataFeed));
             
             try
             {
-                // For shared data feeds, we assume they're already connected by the controller
-                // Only connect if it's definitely not connected
                 if (!_dataFeed.IsConnected)
                 {
                     if (!await _dataFeed.ConnectAsync())
@@ -133,13 +137,6 @@ namespace BookFlow.App.Engine
                         OnError($"Failed to connect data feed for {InstrumentName}", new InvalidOperationException("Data feed connection failed"));
                         return false;
                     }
-                }
-                
-                // Subscribe to data streams with instrument filtering
-                // Add debug logging to verify subscription setup (only if enabled)
-                if (_debugLoggingEnabled)
-                {
-                    OnInfo($"Setting up data subscriptions for {InstrumentName} (TickerId: {TickerId})");
                 }
                 
                 _dataSubscription = _dataFeed.MarketDataStream
@@ -160,16 +157,7 @@ namespace BookFlow.App.Engine
                 _isConnected = true;
                 ConnectionStatusChanged?.Invoke(this, true);
                 
-                // Request initial portfolio state
-                try
-                {
-                    await _dataFeed.RequestPortfolioStateAsync();
-                }
-                catch (Exception ex)
-                {
-                    // Log but don't fail startup
-                    OnError("Failed to request initial portfolio state", ex);
-                }
+                try { await _dataFeed.RequestPortfolioStateAsync(); } catch (Exception ex) { OnError("Failed to request initial portfolio state", ex); }
                 
                 return true;
             }
@@ -200,19 +188,15 @@ namespace BookFlow.App.Engine
             {
                 Interlocked.Increment(ref _messagesProcessed);
                 
-                // Debug logging to verify message filtering (only if enabled)
-                if (_debugLoggingEnabled && _messagesProcessed % 100 == 0) // Log every 100th message to avoid spam
+                if (_debugLoggingEnabled && _messagesProcessed % 100 == 0)
                 {
                     OnInfo($"Processed {_messagesProcessed} messages for TickerId {TickerId} (Message TickerId: {message.TickerId})");
                 }
                 
-                // Record latency if timestamps are available
                 if (message.NtReceiveTime > 0 && message.IpcQueueTime > 0)
                 {
                     var latencyTicks = DateTime.UtcNow.Ticks - message.NtReceiveTime;
                     _latencyMeasurements.Enqueue(latencyTicks);
-                    
-                    // Keep only recent measurements
                     if (_latencyMeasurements.Count > 1000)
                         _latencyMeasurements.TryDequeue(out _);
                 }
@@ -240,12 +224,9 @@ namespace BookFlow.App.Engine
                 case MessageCategory.L1Data:
                     ProcessL1Update(message);
                     break;
-                    
                 case MessageCategory.L2Data:
                     ProcessL2Update(message);
                     break;
-                    
-                // Event data is handled by separate streams
                 case MessageCategory.EventData:
                     break;
             }
@@ -260,11 +241,9 @@ namespace BookFlow.App.Engine
                 case L1MarketDataType.Bid:
                     UpdateBestBid((decimal)message.Price, message.Volume);
                     break;
-                    
                 case L1MarketDataType.Ask:
                     UpdateBestAsk((decimal)message.Price, message.Volume);
                     break;
-                    
                 case L1MarketDataType.Last:
                     UpdateLastTrade((decimal)message.Price, message.Volume);
                     break;
@@ -293,7 +272,7 @@ namespace BookFlow.App.Engine
                         }
                         
                         if (side == L2MarketSide.Bid)
-                            level.UpdateBid(volume, 1); // Assume 1 order for simplicity
+                            level.UpdateBid(volume, 1);
                         else
                             level.UpdateAsk(volume, 1);
                             
@@ -322,7 +301,7 @@ namespace BookFlow.App.Engine
             // Update best bid/ask from book
             UpdateBestPricesFromBook();
         }
-        
+
         private void UpdateBestBid(decimal price, long volume)
         {
             if (volume > 0)
@@ -416,13 +395,8 @@ namespace BookFlow.App.Engine
             // If this is the first trade, detect decimal precision and enable publishing
             if (!_hasReceivedFirstTrade)
             {
-                _priceDecimalPlaces = DetectDecimalPlaces(price);
+                // Respect display precision already set from tick-size
                 _hasReceivedFirstTrade = true;
-                
-                if (_debugLoggingEnabled)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[DomEngine] First trade received: {price} (detected {_priceDecimalPlaces} decimal places)");
-                }
                 CenterDom();
             }
             
@@ -1124,6 +1098,17 @@ namespace BookFlow.App.Engine
         /// Detects the number of decimal places needed to properly display a price.
         /// Examples: 6000.25 → 2, 1.16335 → 5, 100.0 → 0
         /// </summary>
+        private static int GetDecimalPlacesForStep(decimal step)
+        {
+            step = Math.Abs(step);
+            if (step == 0) return 2;
+            var s = step.ToString("G29", System.Globalization.CultureInfo.InvariantCulture);
+            var idx = s.IndexOf('.');
+            if (idx < 0) return 0;
+            var decimals = s.Substring(idx + 1).TrimEnd('0').Length;
+            return Math.Max(decimals, 2);
+        }
+
         private int DetectDecimalPlaces(decimal price)
         {
             // Convert to string and analyze decimal places
