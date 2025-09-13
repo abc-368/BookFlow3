@@ -358,41 +358,47 @@
                         <dxg:GridColumn x:Name="BidOrdersColumn" FieldName="DisplayBidOrderCount" Header="" AllowResizing="False" Width="35">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border Background="#FF1A252F">
-                                        <TextBlock FontSize="8" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White">
-                                            <TextBlock.Text>
+                                    <Border>
+                                        <Border.Background>
+                                            <Binding Path="RowData.Row.DisplayBidOrderCount" Converter="{StaticResource OrderCellBackgroundConverter}" ConverterParameter="bid"/>
+                                        </Border.Background>
+                                         <TextBlock FontSize="8" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White">
+                                             <TextBlock.Text>
                                                 <MultiBinding StringFormat="{}{0:+0;-0;}">
                                                     <Binding Path="RowData.Row.DisplayBidOrderCount"/>
                                                 </MultiBinding>
-                                            </TextBlock.Text>
-                                            <TextBlock.Visibility>
+                                             </TextBlock.Text>
+                                             <TextBlock.Visibility>
                                                 <Binding Path="RowData.Row.DisplayBidOrderCount" Converter="{StaticResource NonZeroToVisibilityConverter}"/>
-                                            </TextBlock.Visibility>
-                                        </TextBlock>
-                                    </Border>
-                                </DataTemplate>
-                            </dxg:GridColumn.CellTemplate>
-                        </dxg:GridColumn>
+                                             </TextBlock.Visibility>
+                                         </TextBlock>
+                                     </Border>
+                                 </DataTemplate>
+                             </dxg:GridColumn.CellTemplate>
+                         </dxg:GridColumn>
 
-                        <!-- 3. Ask Orders Info Column -->
-                        <dxg:GridColumn x:Name="AskOrdersColumn" FieldName="DisplayAskOrderCount" Header="" AllowResizing="False" Width="35">
+                         <!-- 3. Ask Orders Info Column -->
+                         <dxg:GridColumn x:Name="AskOrdersColumn" FieldName="DisplayAskOrderCount" Header="" AllowResizing="False" Width="35">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border Background="#FF1A252F">
-                                        <TextBlock FontSize="8" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White">
-                                            <TextBlock.Text>
+                                    <Border>
+                                        <Border.Background>
+                                            <Binding Path="RowData.Row.DisplayAskOrderCount" Converter="{StaticResource OrderCellBackgroundConverter}" ConverterParameter="ask"/>
+                                        </Border.Background>
+                                         <TextBlock FontSize="8" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White">
+                                             <TextBlock.Text>
                                                 <MultiBinding ConverterParameter="ask" StringFormat="{}-{0:#}">
                                                     <Binding Path="RowData.Row.DisplayAskOrderCount"/>
                                                 </MultiBinding>
-                                            </TextBlock.Text>
-                                            <TextBlock.Visibility>
+                                             </TextBlock.Text>
+                                             <TextBlock.Visibility>
                                                 <Binding Path="RowData.Row.DisplayAskOrderCount" Converter="{StaticResource NonZeroToVisibilityConverter}"/>
-                                            </TextBlock.Visibility>
-                                        </TextBlock>
-                                    </Border>
-                                </DataTemplate>
-                            </dxg:GridColumn.CellTemplate>
-                        </dxg:GridColumn>
+                                             </TextBlock.Visibility>
+                                         </TextBlock>
+                                     </Border>
+                                 </DataTemplate>
+                             </dxg:GridColumn.CellTemplate>
+                         </dxg:GridColumn>
 
                         <!-- 4. Open Position P&L Column -->
                         <dxg:GridColumn x:Name="OpenPositionPnLColumn" FieldName="OpenPositionPnL" Header="" AllowResizing="False" Width="45">

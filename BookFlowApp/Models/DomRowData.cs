@@ -499,8 +499,8 @@ namespace BookFlow.App.Models
         }
 
         // Display counts that combine working orders and position markers
-        public int DisplayBidOrderCount => (_myBidOrderCount + _positionBidMarker);
-        public int DisplayAskOrderCount => (_myAskOrderCount + _positionAskMarker);
+        public int DisplayBidOrderCount => _myBidOrderCount;
+        public int DisplayAskOrderCount => _myAskOrderCount;
 
         public bool HasL1Update
         {
