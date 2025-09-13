@@ -74,6 +74,11 @@ namespace BookFlow.App.Engine
         private System.Threading.Timer? _statisticsTimer;
         private System.Threading.Timer? _snapshotTimer;
         
+        // Price scale guard to protect against half/double price ladders
+        private decimal? _priceScaleBaseline = null; // baseline raw price observed
+        private decimal _priceScaleCorrection = 1m;  // 1=normal, 2=double raw, 0.5=half raw
+        private const decimal ScaleTolerance = 0.02m; // 2% tolerance
+
         public string InstrumentName { get; }
         public byte TickerId { get; }
         public bool IsConnected => _isConnected;
@@ -235,17 +240,21 @@ namespace BookFlow.App.Engine
         private void ProcessL1Update(UnifiedMarketDataMessage message)
         {
             var dataType = (L1MarketDataType)message.MarketDataType;
-            
+            // Use raw price to detect scale, then apply correction
+            var rawPrice = (decimal)message.Price;
+            DetectAndAdjustScale(rawPrice);
+            var price = AlignToTick(ApplyScale(rawPrice));
+
             switch (dataType)
             {
                 case L1MarketDataType.Bid:
-                    UpdateBestBid((decimal)message.Price, message.Volume);
+                    UpdateBestBid(price, message.Volume);
                     break;
                 case L1MarketDataType.Ask:
-                    UpdateBestAsk((decimal)message.Price, message.Volume);
+                    UpdateBestAsk(price, message.Volume);
                     break;
                 case L1MarketDataType.Last:
-                    UpdateLastTrade((decimal)message.Price, message.Volume);
+                    UpdateLastTrade(price, message.Volume);
                     break;
             }
         }
@@ -254,7 +263,9 @@ namespace BookFlow.App.Engine
         {
             var operation = (L2Operation)message.Operation;
             var side = (L2MarketSide)message.MarketDataType;
-            var price = (decimal)message.Price;
+            var rawPrice = (decimal)message.Price;
+            DetectAndAdjustScale(rawPrice);
+            var price = AlignToTick(ApplyScale(rawPrice));
             var volume = message.Volume;
             
             var book = side == L2MarketSide.Bid ? _bidBook : _askBook;
@@ -432,6 +443,34 @@ namespace BookFlow.App.Engine
         {
             var candidateBestBid = _bidBook.Keys.LastOrDefault();
             var candidateBestAsk = _askBook.Keys.FirstOrDefault();
+            
+            // Scale guard: if we already have a reference center and the new center
+            // suddenly flips to ~half or ~double, adjust scale and reset books.
+            if (_bestBid.HasValue && _bestAsk.HasValue && candidateBestBid > 0 && candidateBestAsk > 0)
+            {
+                var prevCenter = (_bestBid.Value + _bestAsk.Value) / 2m;
+                var newCenter = (candidateBestBid + candidateBestAsk) / 2m;
+                if (prevCenter > 0 && newCenter > 0)
+                {
+                    var ratio = newCenter / prevCenter;
+                    if (Math.Abs(ratio - 0.5m) <= ScaleTolerance && _priceScaleCorrection != 2m)
+                    {
+                        // Observed prices halved vs prior center → correct by doubling
+                        _priceScaleCorrection = 2m;
+                        _priceScaleBaseline = null; // re-baseline
+                        ClearAllData();
+                        return;
+                    }
+                    if (Math.Abs(ratio - 2m) <= ScaleTolerance && _priceScaleCorrection != 0.5m)
+                    {
+                        // Observed prices doubled vs prior center → correct by halving
+                        _priceScaleCorrection = 0.5m;
+                        _priceScaleBaseline = null; // re-baseline
+                        ClearAllData();
+                        return;
+                    }
+                }
+            }
             
             // Validate market integrity - best bid must be lower than best ask
             if (candidateBestBid > 0 && candidateBestAsk > 0 && candidateBestBid >= candidateBestAsk)
@@ -1155,6 +1194,70 @@ namespace BookFlow.App.Engine
             _statisticsUpdatesSubject?.Dispose();
             
             _snapshotLock?.Dispose();
+        }
+        
+        // Apply current scale correction to an observed raw price
+        private decimal ApplyScale(decimal rawPrice)
+        {
+            try
+            {
+                return rawPrice * _priceScaleCorrection;
+            }
+            catch
+            {
+                return rawPrice;
+            }
+        }
+        
+        // Detect common scale faults (half/double) and adjust correction factor
+        private void DetectAndAdjustScale(decimal rawPrice)
+        {
+            if (rawPrice <= 0) return;
+            if (!_priceScaleBaseline.HasValue)
+            {
+                _priceScaleBaseline = rawPrice;
+                return;
+            }
+
+            var baseline = _priceScaleBaseline.Value;
+            if (baseline <= 0) { _priceScaleBaseline = rawPrice; return; }
+
+            var ratio = rawPrice / baseline;
+
+            if (Math.Abs(ratio - 0.5m) <= ScaleTolerance && _priceScaleCorrection != 2m)
+            {
+                // Feed suddenly halves prices → correct by doubling
+                _priceScaleCorrection = 2m;
+                _priceScaleBaseline = null; // force re-baseline at new scale
+                ClearAllData();
+            }
+            else if (Math.Abs(ratio - 2m) <= ScaleTolerance && _priceScaleCorrection != 0.5m)
+            {
+                // Feed suddenly doubles prices → correct by halving
+                _priceScaleCorrection = 0.5m;
+                _priceScaleBaseline = null; // force re-baseline at new scale
+                ClearAllData();
+            }
+            else if (ratio > 0.8m && ratio < 1.25m)
+            {
+                // Normal drift → update baseline slowly to follow market
+                _priceScaleBaseline = rawPrice;
+            }
+        }
+        
+        // Align price to the configured tick size grid
+        private decimal AlignToTick(decimal price)
+        {
+            if (_tickSize <= 0) return price;
+            try
+            {
+                var steps = Math.Round(price / _tickSize, MidpointRounding.AwayFromZero);
+                return steps * _tickSize;
+            }
+            catch
+            {
+                return price;
+            }
         }
     }
 }
