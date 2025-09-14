@@ -57,6 +57,10 @@ namespace BookFlow.App.Models
         private int _positionBidMarker = 0; // long position marker on bid column
         private int _positionAskMarker = 0; // short position marker on ask column (positive value; UI formats with '-')
 
+        // Recency ticks for UI highlighting
+        private long _lastBidHitTicks = 0;
+        private long _lastAskHitTicks = 0;
+
         public decimal Price
         {
             get => _price;
@@ -593,6 +597,17 @@ namespace BookFlow.App.Models
             }
         }
 
+        public long LastBidHitTicks
+        {
+            get => _lastBidHitTicks;
+            set { if (_lastBidHitTicks != value) { _lastBidHitTicks = value; OnPropertyChanged(); } }
+        }
+        public long LastAskHitTicks
+        {
+            get => _lastAskHitTicks;
+            set { if (_lastAskHitTicks != value) { _lastAskHitTicks = value; OnPropertyChanged(); } }
+        }
+
         #endregion
 
         // Computed properties for display
@@ -670,78 +685,77 @@ namespace BookFlow.App.Models
             BidCount = priceLevel.BidCount;
             AskCount = priceLevel.AskCount;
             IsTopOfBook = priceLevel.IsTopOfBook;
-            
+
+            // Reflect VolumeProfileVolume from engine
+            if (priceLevel.VolumeProfileVolume != (long)VolumeProfile)
+            {
+                VolumeProfile = priceLevel.VolumeProfileVolume;
+            }
+
+            // Detect recent side-specific trade hits for orange highlight
+            if (priceLevel.BidSideTradedVolume > _lastTradeAtBidBurst)
+            {
+                LastBidHitTicks = System.DateTime.UtcNow.Ticks;
+            }
+            if (priceLevel.AskSideTradedVolume > _lastTradeAtAskBurst)
+            {
+                LastAskHitTicks = System.DateTime.UtcNow.Ticks;
+            }
+
             // Enhanced properties from PriceLevel
-            // IMPORTANT: AskProfile and BidProfile are cumulative and NEVER reset
-            // We need to add any NEW traded volume from PriceLevel to our cumulative profiles
             var newBidTradedVolume = priceLevel.BidSideTradedVolume;
             var newAskTradedVolume = priceLevel.AskSideTradedVolume;
-            
-            // Only add incremental volume - if PriceLevel has more volume than we've recorded
+
             if (newBidTradedVolume > _bidProfile)
             {
                 var increment = newBidTradedVolume - _bidProfile;
                 _bidProfile += increment;
                 OnPropertyChanged(nameof(BidProfile));
-                OnPropertyChanged(nameof(VolumeProfile)); // VolumeProfile is computed
+                OnPropertyChanged(nameof(VolumeProfile));
             }
-            
+
             if (newAskTradedVolume > _askProfile)
             {
                 var increment = newAskTradedVolume - _askProfile;
                 _askProfile += increment;
                 OnPropertyChanged(nameof(AskProfile));
-                OnPropertyChanged(nameof(VolumeProfile)); // VolumeProfile is computed
+                OnPropertyChanged(nameof(VolumeProfile));
             }
-            
-            // Compute snapshot deltas for depth columns and enforce mutual exclusivity
+
+            // Compute snapshot deltas per side (no mutual exclusivity)
             var prevBidDepth = _bidDepth;
             var prevAskDepth = _askDepth;
-            var nextBidDepth = priceLevel.BidVolume;  // Current bid volume = depth
-            var nextAskDepth = priceLevel.AskVolume;  // Current ask volume = depth
+            var nextBidDepth = priceLevel.BidVolume;
+            var nextAskDepth = priceLevel.AskVolume;
 
-            // Enforce mutual exclusivity on a row: a price cannot have both bid and ask depth at the same time
-            if (nextBidDepth > 0 && nextAskDepth > 0)
-            {
-                // Prefer the larger side, clear the smaller
-                if (nextBidDepth >= nextAskDepth)
-                    nextAskDepth = 0;
-                else
-                    nextBidDepth = 0;
-            }
+            var bidDelta = nextBidDepth - prevBidDepth;
+            var askDelta = nextAskDepth - prevAskDepth;
+            if (bidDelta != 0) BidSnapshot = bidDelta;
+            if (askDelta != 0) AskSnapshot = askDelta;
 
-            // Set snapshots as delta (empty treated as 0 naturally by arithmetic)
-            var bidDelta = nextBidDepth - prevBidDepth;   // e.g., 50 -> 20 => -30; 10 -> 0 => -10
-            var askDelta = nextAskDepth - prevAskDepth;   // e.g., 0 -> 15 => +15
-            if (bidDelta != 0)
-                BidSnapshot = bidDelta;
-            if (askDelta != 0)
-                AskSnapshot = askDelta;
-
-            // Apply updated depths after computing snapshots
             BidDepth = nextBidDepth;
             AskDepth = nextAskDepth;
 
             LastTradeAtBid = priceLevel.BidSideTradedVolume;
             LastTradeAtAsk = priceLevel.AskSideTradedVolume;
-            LastTradeAtBidBurst = priceLevel.BidSideTradedVolume; // Market sells hitting bids
-            LastTradeAtAskBurst = priceLevel.AskSideTradedVolume; // Market buys hitting asks
+            LastTradeAtBidBurst = priceLevel.BidSideTradedVolume;
+            LastTradeAtAskBurst = priceLevel.AskSideTradedVolume;
             OpenPositionPnL = priceLevel.UnrealizedPnL;
-            
+
             // Order tracking
             BidOrderCount = priceLevel.BidCount;
             AskOrderCount = priceLevel.AskCount;
             MyBidOrderCount = priceLevel.MyBidOrderCount;
             MyAskOrderCount = priceLevel.MyAskOrderCount;
-            
+
             // State flags
-            IsTopBid = false; // Will be set correctly by DomViewModel based on best bid price
-            IsTopAsk = false; // Will be set correctly by DomViewModel based on best ask price
+            IsTopBid = false;
+            IsTopAsk = false;
             HasL1Update = priceLevel.HasRecentActivity;
-            
-            // Update order info if we have orders
-            BidOrdersInfo = ""; // Only show when user has working orders at this price
-            AskOrdersInfo = ""; // Only show when user has working orders at this price
+
+            // Update order info
+            BidOrdersInfo = "";
+            AskOrdersInfo = "";
             BidOrdersFullText = priceLevel.BidCount > 0 ? $"{priceLevel.BidCount} orders at {priceLevel.Price:F2}" : "";
             AskOrdersFullText = priceLevel.AskCount > 0 ? $"{priceLevel.AskCount} orders at {priceLevel.Price:F2}" : "";
         }

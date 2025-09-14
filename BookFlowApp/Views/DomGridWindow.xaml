@@ -505,15 +505,15 @@
                         <dxg:GridColumn x:Name="BidDepthColumn" FieldName="BidDepth" Header="" AllowResizing="False" Width="50">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border Cursor="Hand" 
-                                            PreviewMouseLeftButtonDown="Depth_PreviewMouseLeftButtonDown"
-                                            MouseLeftButtonDown="BidDepth_MouseLeftButtonDown" 
-                                            MouseRightButtonDown="BidDepth_MouseRightButtonDown">
+                                    <Border>
                                         <Border.Background>
                                             <MultiBinding Converter="{StaticResource TopOfBookBackgroundConverter}" ConverterParameter="bid">
                                                 <Binding Path="RowData.Row.IsTopBid"/>
                                                 <Binding Path="RowData.Row.IsTopAsk"/>
                                                 <Binding Path="RowData.Row.BidDepth"/>
+                                                <Binding Path="RowData.Row.LastBidHitTicks"/>
+                                                <Binding Path="RowData.Row.LastAskHitTicks"/>
+                                                <Binding Path="DataContext.UiPulseTicks" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             </MultiBinding>
                                         </Border.Background>
                                         <Grid>
@@ -530,13 +530,16 @@
                                                         <Binding Path="RowData.Row.IsTopBid"/>
                                                         <Binding Path="RowData.Row.IsTopAsk"/>
                                                         <Binding Path="RowData.Row.BidDepth"/>
+                                                        <Binding Path="RowData.Row.LastBidHitTicks"/>
+                                                        <Binding Path="RowData.Row.LastAskHitTicks"/>
+                                                        <Binding Path="DataContext.UiPulseTicks" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                     </MultiBinding>
                                                 </Border.Background>
                                             </Border>
                                             <!-- Text on top -->
                                             <TextBlock Text="{Binding RowData.Row.BidDepth, Converter={StaticResource VolumeDisplayConverter}}" 
-                                                      Foreground="White" FontSize="8"
-                                                      HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
+                                                       Foreground="White" FontSize="8"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -573,15 +576,15 @@
                         <dxg:GridColumn x:Name="AskDepthColumn" FieldName="AskDepth" Header="" AllowResizing="False" Width="50">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border Cursor="Hand" 
-                                            PreviewMouseLeftButtonDown="Depth_PreviewMouseLeftButtonDown"
-                                            MouseLeftButtonDown="AskDepth_MouseLeftButtonDown" 
-                                            MouseRightButtonDown="AskDepth_MouseRightButtonDown">
+                                    <Border>
                                         <Border.Background>
                                             <MultiBinding Converter="{StaticResource TopOfBookBackgroundConverter}" ConverterParameter="ask">
                                                 <Binding Path="RowData.Row.IsTopBid"/>
                                                 <Binding Path="RowData.Row.IsTopAsk"/>
                                                 <Binding Path="RowData.Row.AskDepth"/>
+                                                <Binding Path="RowData.Row.LastBidHitTicks"/>
+                                                <Binding Path="RowData.Row.LastAskHitTicks"/>
+                                                <Binding Path="DataContext.UiPulseTicks" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             </MultiBinding>
                                         </Border.Background>
                                         <Grid>
@@ -598,6 +601,9 @@
                                                         <Binding Path="RowData.Row.IsTopBid"/>
                                                         <Binding Path="RowData.Row.IsTopAsk"/>
                                                         <Binding Path="RowData.Row.AskDepth"/>
+                                                        <Binding Path="RowData.Row.LastBidHitTicks"/>
+                                                        <Binding Path="RowData.Row.LastAskHitTicks"/>
+                                                        <Binding Path="DataContext.UiPulseTicks" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                     </MultiBinding>
                                                 </Border.Background>
                                             </Border>

@@ -46,6 +46,21 @@ namespace BookFlow.App.ViewModels
         private decimal? _authoritativeBestBid;
         private decimal? _authoritativeBestAsk;
 
+        // UI pulse to drive time-based binding refresh (e.g., recent trade highlight decay)
+        private long _uiPulseTicks;
+        public long UiPulseTicks
+        {
+            get => _uiPulseTicks;
+            private set
+            {
+                if (_uiPulseTicks != value)
+                {
+                    _uiPulseTicks = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         // Constant point value (TODO: pull from instrument metadata)
         private const decimal DefaultPointValue = 50m;
 
@@ -398,8 +413,8 @@ namespace BookFlow.App.ViewModels
 
         private void OnUiUpdateTick(object? sender, EventArgs e)
         {
-            // Periodic UI updates (if needed)
-            // Most updates come from the reactive streams above
+            // Periodic UI pulse to refresh time-sensitive bindings (e.g., recent trade highlight decay)
+            UiPulseTicks = DateTime.UtcNow.Ticks;
         }
 
         #endregion

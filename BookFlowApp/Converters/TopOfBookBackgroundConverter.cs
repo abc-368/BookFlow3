@@ -29,58 +29,62 @@ namespace BookFlow.App.Converters
         private static readonly SolidColorBrush AskBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(231, 76, 60)); // Red for ask
         private static readonly SolidColorBrush AskProfileBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(197, 54, 44)); // Darker red for ask profile
 
+        private static readonly long HighlightWindowTicks = TimeSpan.FromMilliseconds(450).Ticks;
+
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
-            if (values.Length >= 3 && 
-                values[0] is bool isTopBid && 
-                values[1] is bool isTopAsk &&
-                values[2] is long depth)
+            try
             {
-                // Only highlight if there's actual depth
-                if (depth > 0)
+                bool isTopBid = values.Length > 0 && values[0] is bool b0 && b0;
+                bool isTopAsk = values.Length > 1 && values[1] is bool b1 && b1;
+
+                long depth = 0;
+                if (values.Length > 2)
                 {
-                    if (isTopBid || isTopAsk)
-                    {
-                        // Check if this is for the volume profile bar or main background
-                        string? elementType = parameter as string;
-                        if (elementType?.Contains("profile") == true)
-                        {
-                            return TopOfBookProfileBrush; // Darker orange for volume profile
-                        }
-                        return TopOfBookBrush; // Dark orange for top of book - good contrast with white text
-                    }
+                    if (values[2] is long l) depth = l;
+                    else if (values[2] is int i) depth = i;
+                    else if (values[2] is double d) depth = (long)d;
                 }
-                
-                // Default colors based on side and element type
+
+                long lastBidHitTicks = values.Length > 3 && values[3] is long lb ? lb : 0L;
+                long lastAskHitTicks = values.Length > 4 && values[4] is long la ? la : 0L;
+                // values[5] = UiPulseTicks; not used directly, just to force reevaluation
+
                 string? param = parameter as string;
-                if (param?.Contains("profile") == true)
+                bool isProfile = param?.Contains("profile") == true;
+                bool wantBid = param?.Contains("bid") == true;
+                bool wantAsk = param?.Contains("ask") == true;
+
+                var now = DateTime.UtcNow.Ticks;
+                bool recentBidHit = isTopBid && lastBidHitTicks > 0 && (now - lastBidHitTicks) <= HighlightWindowTicks;
+                bool recentAskHit = isTopAsk && lastAskHitTicks > 0 && (now - lastAskHitTicks) <= HighlightWindowTicks;
+
+                // Only color orange the cell on the side that was actually hit and only if there is depth
+                bool highlightThisCell = depth > 0 && ((wantBid && recentBidHit) || (wantAsk && recentAskHit));
+                if (highlightThisCell)
                 {
-                    // Volume profile bar colors
-                    if (param.Contains("bid"))
-                    {
-                        return BidProfileBrush;
-                    }
-                    else if (param.Contains("ask"))
-                    {
-                        return AskProfileBrush;
-                    }
+                    return isProfile ? TopOfBookProfileBrush : TopOfBookBrush;
+                }
+
+                // No recent hit for this side -> default colors by side/element
+                if (isProfile)
+                {
+                    if (wantBid) return BidProfileBrush;
+                    if (wantAsk) return AskProfileBrush;
                 }
                 else
                 {
-                    // Main background colors
-                    if (param == "bid")
-                    {
-                        return BidBrush;
-                    }
-                    else if (param == "ask")
-                    {
-                        return AskBrush;
-                    }
+                    if (wantBid) return BidBrush;
+                    if (wantAsk) return AskBrush;
                 }
+
+                // Fallback
+                return BidBrush;
             }
-            
-            // Fallback to default blue
-            return BidBrush;
+            catch
+            {
+                return BidBrush;
+            }
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

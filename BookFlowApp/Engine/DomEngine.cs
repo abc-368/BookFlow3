@@ -17,7 +17,7 @@ namespace BookFlow.App.Engine
     /// Implements the direct connection architecture with local message filtering,
     /// double-buffering for thread-safe reads, and intelligent conflation for UI updates.
     /// </summary>
-    public class DomEngine : IDomEngine
+    public class DomEngine : IDomEngine, IDisposable
     {
         private readonly object _syncLock = new object();
         private readonly SortedDictionary<decimal, PriceLevel> _bidBook = new();
@@ -269,14 +269,13 @@ namespace BookFlow.App.Engine
             var operation = (L2Operation)message.Operation;
             var side = (L2MarketSide)message.MarketDataType;
             var rawPrice = (decimal)message.Price;
-            // Dynamically detect and update price precision from observed prices
             UpdatePricePrecisionFromObservedPrice(rawPrice);
-            // Do not apply auto scale correction; use raw prices aligned to tick size
             var price = AlignToTick(rawPrice);
             var volume = message.Volume;
-            
+
+            // Always process depth normally
             var book = side == L2MarketSide.Bid ? _bidBook : _askBook;
-            
+
             switch (operation)
             {
                 case L2Operation.Add:
@@ -288,35 +287,29 @@ namespace BookFlow.App.Engine
                             level = PriceLevel.CreateEmpty(price);
                             book[price] = level;
                         }
-                        
+
                         if (side == L2MarketSide.Bid)
                             level.UpdateBid(volume, 1);
                         else
                             level.UpdateAsk(volume, 1);
-                            
+
                         book[price] = level;
-                        
-                        // Mark that actual market data changed
+
                         Interlocked.Increment(ref _lastMarketDataChangeSequence);
                     }
                     else
                     {
                         book.Remove(price);
-                        
-                        // Mark that actual market data changed
                         Interlocked.Increment(ref _lastMarketDataChangeSequence);
                     }
                     break;
-                    
+
                 case L2Operation.Remove:
                     book.Remove(price);
-                    
-                    // Mark that actual market data changed
                     Interlocked.Increment(ref _lastMarketDataChangeSequence);
                     break;
             }
-            
-            // Update best bid/ask from book
+
             UpdateBestPricesFromBook();
         }
 
@@ -325,11 +318,11 @@ namespace BookFlow.App.Engine
             if (volume > 0)
             {
                 // Validate that new bid doesn't create crossed market
-                if (_bestAsk > 0 && price >= _bestAsk)
+                if (_bestAsk.HasValue && price >= _bestAsk.Value)
                 {
                     if (_debugLoggingEnabled)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[DomEngine] REJECTING CROSSED BID: {price:F2} >= Ask {_bestAsk:F2}");
+                        System.Diagnostics.Debug.WriteLine($"[DomEngine] REJECTING CROSSED BID: {price:F6} >= Ask {_bestAsk.Value:F6}");
                     }
                     return; // Reject bid update that would create crossed market
                 }
@@ -345,18 +338,13 @@ namespace BookFlow.App.Engine
             else
             {
                 _bidBook.Remove(price);
-                _bestBid = _bidBook.Keys.LastOrDefault();
+                _bestBid = _bidBook.Any() ? _bidBook.Keys.Last() : (decimal?)null;
                 
                 // After removing bid, validate integrity with current ask
-                if (_bestBid > 0 && _bestAsk > 0 && _bestBid >= _bestAsk)
+                if (_bestBid.HasValue && _bestAsk.HasValue && _bestBid.Value >= _bestAsk.Value)
                 {
-                    // Find next valid bid
-                    _bestBid = _bidBook.Keys.Where(p => p < _bestAsk).LastOrDefault();
-                    
-                    if (_debugLoggingEnabled)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[DomEngine] CORRECTED BID after removal: {_bestBid:F2}");
-                    }
+                    var validBid = _bidBook.Keys.Where(p => p < _bestAsk.Value).LastOrDefault();
+                    _bestBid = _bidBook.Any() && validBid != default(decimal) ? validBid : (decimal?)null;
                 }
             }
             
@@ -369,11 +357,11 @@ namespace BookFlow.App.Engine
             if (volume > 0)
             {
                 // Validate that new ask doesn't create crossed market
-                if (_bestBid > 0 && price <= _bestBid)
+                if (_bestBid.HasValue && price <= _bestBid.Value)
                 {
                     if (_debugLoggingEnabled)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[DomEngine] REJECTING CROSSED ASK: {price:F2} <= Bid {_bestBid:F2}");
+                        System.Diagnostics.Debug.WriteLine($"[DomEngine] REJECTING CROSSED ASK: {price:F6} <= Bid {_bestBid.Value:F6}");
                     }
                     return; // Reject ask update that would create crossed market
                 }
@@ -389,18 +377,13 @@ namespace BookFlow.App.Engine
             else
             {
                 _askBook.Remove(price);
-                _bestAsk = _askBook.Keys.FirstOrDefault();
+                _bestAsk = _askBook.Any() ? _askBook.Keys.First() : (decimal?)null;
                 
                 // After removing ask, validate integrity with current bid
-                if (_bestBid > 0 && _bestAsk > 0 && _bestBid >= _bestAsk)
+                if (_bestBid.HasValue && _bestAsk.HasValue && _bestBid.Value >= _bestAsk.Value)
                 {
-                    // Find next valid ask
-                    _bestAsk = _askBook.Keys.Where(p => p > _bestBid).FirstOrDefault();
-                    
-                    if (_debugLoggingEnabled)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[DomEngine] CORRECTED ASK after removal: {_bestAsk:F2}");
-                    }
+                    var validAsk = _askBook.Keys.Where(p => p > _bestBid.Value).FirstOrDefault();
+                    _bestAsk = _askBook.Any() && validAsk != default(decimal) ? validAsk : (decimal?)null;
                 }
             }
             
@@ -410,104 +393,91 @@ namespace BookFlow.App.Engine
         
         private void UpdateLastTrade(decimal price, long volume)
         {
-            // If this is the first trade, detect decimal precision and enable publishing
             if (!_hasReceivedFirstTrade)
             {
-                // Respect display precision already set from tick-size
                 _hasReceivedFirstTrade = true;
                 CenterDom();
             }
-            
+
             _lastTradedPrice = price;
             _lastTradedVolume = volume;
-            
-            // Mark that actual market data changed
+
             Interlocked.Increment(ref _lastMarketDataChangeSequence);
-            
-            // Record directional trade data for DOM display
-            // Determine if trade hit bid or ask based on price relative to best bid/ask
-            bool hitBid = price <= _bestBid; // Market sell hitting bid
-            
-            // Update the price level's trade history
+
+            // Determine trade side using best bid/ask when available; otherwise use proximity
+            bool hitBid;
+            if (_bestBid.HasValue && _bestAsk.HasValue && _bestBid > 0 && _bestAsk > 0)
+            {
+                // If price is below/at bid -> hit bid; above/at ask -> hit ask; otherwise closer side
+                if (price <= _bestBid.Value) hitBid = true;
+                else if (price >= _bestAsk.Value) hitBid = false;
+                else hitBid = Math.Abs(price - _bestBid.Value) <= Math.Abs(price - _bestAsk.Value);
+            }
+            else if (_bestBid.HasValue && _bestBid > 0)
+            {
+                hitBid = price <= _bestBid.Value;
+            }
+            else if (_bestAsk.HasValue && _bestAsk > 0)
+            {
+                hitBid = price < _bestAsk.Value;
+            }
+            else
+            {
+                // Fallback: assume bid hit
+                hitBid = true;
+            }
+
+            // Find nearest existing price level (within half a tick) to attribute the trade
             var allBooks = new Dictionary<decimal, PriceLevel>();
             foreach (var kvp in _bidBook) allBooks[kvp.Key] = kvp.Value;
             foreach (var kvp in _askBook) allBooks[kvp.Key] = kvp.Value;
-            
-            if (allBooks.ContainsKey(price))
+
+            if (allBooks.Count == 0)
+                return;
+
+            decimal nearestKey = 0m;
+            decimal minDiff = decimal.MaxValue;
+            foreach (var key in allBooks.Keys)
             {
-                var level = allBooks[price];
+                var diff = Math.Abs(key - price);
+                if (diff < minDiff)
+                {
+                    minDiff = diff;
+                    nearestKey = key;
+                }
+            }
+
+            var maxAllowedDiff = _tickSize > 0 ? _tickSize / 2m : 0.0000001m;
+            if (minDiff <= maxAllowedDiff && allBooks.TryGetValue(nearestKey, out var level))
+            {
                 level.RecordTrade(volume, hitBid);
-                
-                // Update back to the appropriate book
-                if (_bidBook.ContainsKey(price))
-                    _bidBook[price] = level;
-                else if (_askBook.ContainsKey(price))
-                    _askBook[price] = level;
+
+                // Write back to appropriate side book if exists
+                if (_bidBook.ContainsKey(nearestKey))
+                    _bidBook[nearestKey] = level;
+                if (_askBook.ContainsKey(nearestKey))
+                    _askBook[nearestKey] = level;
             }
         }
         
         private void UpdateBestPricesFromBook()
         {
-            var candidateBestBid = _bidBook.Keys.LastOrDefault();
-            var candidateBestAsk = _askBook.Keys.FirstOrDefault();
+            var candidateBestBid = _bidBook.Any() ? _bidBook.Keys.Last() : (decimal?)null;
+            var candidateBestAsk = _askBook.Any() ? _askBook.Keys.First() : (decimal?)null;
+            
+            // Normal case - assign directly
+            _bestBid = candidateBestBid;
+            _bestAsk = candidateBestAsk;
             
             // Validate market integrity - best bid must be lower than best ask
-            if (candidateBestBid > 0 && candidateBestAsk > 0 && candidateBestBid >= candidateBestAsk)
+            if (_bestBid.HasValue && _bestAsk.HasValue && _bestBid.Value >= _bestAsk.Value)
             {
-                // Crossed market detected - log warning and correct
-                if (_debugLoggingEnabled)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[DomEngine] CROSSED MARKET DETECTED: Bid={candidateBestBid:F2} >= Ask={candidateBestAsk:F2}");
-                }
+                // Crossed market detected - find nearest valid combination
+                var validBid = _bidBook.Keys.Where(price => price < _bestAsk.Value).LastOrDefault();
+                var validAsk = _askBook.Keys.Where(price => price > _bestBid.Value).FirstOrDefault();
                 
-                // Find the highest valid bid that's lower than the lowest ask
-                var validBid = _bidBook.Keys.Where(price => price < candidateBestAsk).LastOrDefault();
-                
-                // Find the lowest valid ask that's higher than the highest bid
-                var validAsk = _askBook.Keys.Where(price => price > candidateBestBid).FirstOrDefault();
-                
-                // Use the corrected values, ensuring minimum 1 tick spread
-                if (validBid > 0 && validAsk > validBid + _tickSize)
-                {
-                    _bestBid = validBid;
-                    _bestAsk = validAsk;
-                    
-                    if (_debugLoggingEnabled)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[DomEngine] CORRECTED to: Bid={_bestBid:F2} Ask={_bestAsk:F2} (Spread={_bestAsk - _bestBid:F2})");
-                    }
-                }
-                else
-                {
-                    // If we can't find valid prices with proper spread, use one side only
-                    if (validBid > 0)
-                    {
-                        _bestBid = validBid;
-                        _bestAsk = 0; // Clear invalid ask
-                    }
-                    else if (validAsk > 0)
-                    {
-                        _bestAsk = validAsk;
-                        _bestBid = 0; // Clear invalid bid
-                    }
-                    else
-                    {
-                        // Clear both if no valid combination exists
-                        _bestBid = 0;
-                        _bestAsk = 0;
-                    }
-                    
-                    if (_debugLoggingEnabled)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[DomEngine] SINGLE SIDE ONLY: Bid={_bestBid:F2} Ask={_bestAsk:F2}");
-                    }
-                }
-            }
-            else
-            {
-                // Normal case - no crossed market
-                _bestBid = candidateBestBid;
-                _bestAsk = candidateBestAsk;
+                _bestBid = _bidBook.Any() && validBid != default(decimal) ? validBid : (decimal?)null;
+                _bestAsk = _askBook.Any() && validAsk != default(decimal) ? validAsk : (decimal?)null;
             }
         }
         
