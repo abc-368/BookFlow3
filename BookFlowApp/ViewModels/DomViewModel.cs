@@ -24,6 +24,7 @@ namespace BookFlow.App.ViewModels
         private readonly IDomEngine _domEngine;
         private readonly ITradingService? _tradingService;
         private readonly DispatcherTimer _uiUpdateTimer;
+        private IDisposable? _ladderSubscription;
         private volatile bool _disposed = false;
         
         // Logging integration - simple on/off
@@ -46,6 +47,10 @@ namespace BookFlow.App.ViewModels
         private decimal? _authoritativeBestBid;
         private decimal? _authoritativeBestAsk;
 
+        // Most recent per-side execution prices (Q1) from the engine.
+        private decimal? _lastBidHitPrice;
+        private decimal? _lastAskHitPrice;
+
         // UI pulse to drive time-based binding refresh (e.g., recent trade highlight decay)
         private long _uiPulseTicks;
         public long UiPulseTicks
@@ -61,11 +66,11 @@ namespace BookFlow.App.ViewModels
             }
         }
 
-        // Constant point value (TODO: pull from instrument metadata)
-        private const decimal DefaultPointValue = 50m;
+        // Instrument point value comes from the engine (NT8 instrument metadata), not a constant.
+        private decimal PointValue => _domEngine.PointValue;
 
-        public ObservableCollection<DomRowData> DomRows { get; }
-        
+        public RangeObservableCollection<DomRowData> DomRows { get; }
+
         // Alias for backward compatibility
         public ObservableCollection<DomRowData> PriceLevels => DomRows;
         
@@ -88,10 +93,10 @@ namespace BookFlow.App.ViewModels
                 OnPortfolioChanged();
             }
 
-            DomRows = new ObservableCollection<DomRowData>();
+            DomRows = new RangeObservableCollection<DomRowData>();
 
-            // Subscribe to engine updates
-            _domEngine.LadderUpdates.Subscribe(OnLadderUpdate);
+            // Subscribe to engine updates (store the handle so Dispose can release it)
+            _ladderSubscription = _domEngine.LadderUpdates.Subscribe(OnLadderUpdate);
             _domEngine.ConnectionStatusChanged += OnConnectionStatusChanged;
 
             // Set up UI update timer for smooth 60fps updates
@@ -128,7 +133,7 @@ namespace BookFlow.App.ViewModels
                 // Recalculate UnrealizedPnL locally using latest last price to ensure responsiveness
                 if (LastPrice.HasValue && Position != 0 && _averagePrice != 0)
                 {
-                    UnrealizedPnL = (LastPrice.Value - _averagePrice) * Position * DefaultPointValue;
+                    UnrealizedPnL = (LastPrice.Value - _averagePrice) * Position * PointValue;
                 }
                 else
                 {
@@ -199,7 +204,7 @@ namespace BookFlow.App.ViewModels
                     // Recalculate unrealized PnL on price change for responsiveness
                     if (value.HasValue && _averagePrice != 0 && Position != 0)
                     {
-                        UnrealizedPnL = (value.Value - _averagePrice) * Position * DefaultPointValue;
+                        UnrealizedPnL = (value.Value - _averagePrice) * Position * PointValue;
                         UpdatePositionAnnotations();
                     }
                 }
@@ -348,6 +353,8 @@ namespace BookFlow.App.ViewModels
             // Store authoritative best bid/ask for top-of-book highlighting synchronization
             _authoritativeBestBid = update.BestBid;
             _authoritativeBestAsk = update.BestAsk;
+            _lastBidHitPrice = update.LastBidHitPrice;
+            _lastAskHitPrice = update.LastAskHitPrice;
 
             if (App.Current?.Dispatcher?.CheckAccess() == false)
             {
@@ -510,16 +517,15 @@ namespace BookFlow.App.ViewModels
                 // This ensures synchronization with header bid/ask display
                 domRow.IsTopBid = (bestBidPrice.HasValue && level.Price == bestBidPrice.Value && level.BidVolume > 0);
                 domRow.IsTopAsk = (bestAskPrice.HasValue && level.Price == bestAskPrice.Value && level.AskVolume > 0);
-                
+
+                ApplyZoneAndHitFlags(domRow, bestBidPrice, bestAskPrice);
+
                 newRows.Add(domRow);
             }
             
-            // Replace the collection with the new ordered list (avoid DeferRefresh to prevent runtime errors)
-            DomRows.Clear();
-            foreach (var row in newRows)
-            {
-                DomRows.Add(row);
-            }
+            // Replace the collection in one shot: a single Reset event instead of
+            // Clear's Reset + N Adds. Reused DomRowData references preserve cumulative profiles.
+            DomRows.ReplaceRange(newRows);
             
             // Notify UI about changes to volume profile calculations
             OnPropertyChanged(nameof(MaxVolumeProfile));
@@ -559,11 +565,16 @@ namespace BookFlow.App.ViewModels
             {
                 if (existingLookup.TryGetValue(newLevel.Price, out var existingRow))
                 {
-                    // Update existing row if data has changed
-                    if (existingRow.BidVolume != newLevel.BidVolume || 
-                        existingRow.AskVolume != newLevel.AskVolume ||
-                        existingRow.BidCount != newLevel.BidCount ||
-                        existingRow.AskCount != newLevel.AskCount)
+                    // Include traded volume deltas so LTB/LTA persist and update independently of depth/order changes
+                    bool depthChanged = existingRow.BidVolume != newLevel.BidVolume || 
+                                        existingRow.AskVolume != newLevel.AskVolume ||
+                                        existingRow.BidCount  != newLevel.BidCount  ||
+                                        existingRow.AskCount  != newLevel.AskCount;
+
+                    bool tradeProfilesChanged = existingRow.LastTradeAtBidBurst != newLevel.BidSideTradedVolume ||
+                                                existingRow.LastTradeAtAskBurst != newLevel.AskSideTradedVolume;
+
+                    if (depthChanged || tradeProfilesChanged)
                     {
                         existingRow.UpdateFromPriceLevel(newLevel);
                     }
@@ -583,7 +594,11 @@ namespace BookFlow.App.ViewModels
                 var bestAskRow = DomRows.FirstOrDefault(r => r.Price == _authoritativeBestAsk.Value && r.AskVolume > 0);
                 if (bestAskRow != null) bestAskRow.IsTopAsk = true;
             }
-            
+
+            // Zone + last-hit flags across all rows (Q1/Q2/Q3).
+            foreach (var row in DomRows)
+                ApplyZoneAndHitFlags(row, _authoritativeBestBid, _authoritativeBestAsk);
+
             // Notify UI about changes to volume profile calculations after sparse updates
             OnPropertyChanged(nameof(MaxVolumeProfile));
             OnPropertyChanged(nameof(MaxBidProfile));
@@ -629,7 +644,8 @@ namespace BookFlow.App.ViewModels
             if (window == null) return;
 
             var grid = window.DomGridControl;
-            var view = grid?.View as TableView;
+            if (grid == null) return;
+            var view = grid.View as TableView;
             if (view == null) return;
 
             // Estimate visible rows from control height and row height (18 from RowStyle)
@@ -655,6 +671,17 @@ namespace BookFlow.App.ViewModels
             // Ensure the row is realized and scrolled into view, then center via TopRowIndex
             view.ScrollIntoView(DomRows[target.Index]);
             view.TopRowIndex = desiredTopHandle;
+        }
+
+        // Sets the side-zone flags (drive tinting + stale-data suppression) and the
+        // last-execution markers on a row. Cheap: four bool assignments per row, evaluated
+        // only when the ladder is (re)built, not per tick.
+        private void ApplyZoneAndHitFlags(DomRowData row, decimal? bestBid, decimal? bestAsk)
+        {
+            row.IsBidZone = bestBid.HasValue && row.Price <= bestBid.Value;
+            row.IsAskZone = bestAsk.HasValue && row.Price >= bestAsk.Value;
+            row.IsLastBidHit = _lastBidHitPrice.HasValue && row.Price == _lastBidHitPrice.Value;
+            row.IsLastAskHit = _lastAskHitPrice.HasValue && row.Price == _lastAskHitPrice.Value;
         }
 
         private void UpdateOrderAnnotations()
@@ -717,7 +744,7 @@ namespace BookFlow.App.ViewModels
             {
                 var exitPrice = row.Price;
                 // (exit - avg) * signed position * point value
-                var pnl = (exitPrice - _averagePrice) * Position * DefaultPointValue;
+                var pnl = (exitPrice - _averagePrice) * Position * PointValue;
                 row.OpenPositionPnL = pnl;
                 // Clear markers; will set only at entry row below
                 row.PositionBidMarker = 0;
@@ -1033,6 +1060,17 @@ namespace BookFlow.App.ViewModels
             _disposed = true;
 
             _uiUpdateTimer?.Stop();
+
+            // Detach every subscription so this view model (and the window) can be collected.
+            _ladderSubscription?.Dispose();
+            _ladderSubscription = null;
+            _domEngine.ConnectionStatusChanged -= OnConnectionStatusChanged;
+            if (_tradingService != null)
+            {
+                _tradingService.OrderBookChanged -= OnOrderBookChanged;
+                _tradingService.PortfolioChanged -= OnPortfolioChanged;
+            }
+
             _domEngine?.Dispose();
         }
     }

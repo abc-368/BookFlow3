@@ -16,7 +16,9 @@ namespace NinjaTrader.NinjaScript.Indicators
     public class BookFlowIndi : Indicator
     {
         private byte _tickerId = 0;
-        private bool _enableLogging = true;
+        // Logging defaults to off. Tick-rate Print() floods NT8's output pipeline;
+        // operators flip this on per-instrument when diagnosing.
+        private bool _enableLogging = false;
         private bool _enableLevel1Logging = true;
         private bool _enableLevel2Logging = true;
         private bool _enableOtherEventLogging = true;
@@ -69,6 +71,21 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 try { _logPrefix = $"[BookFlowIndi-{Instrument.FullName}]"; RegisterWithAddOn(); }
                 catch (Exception ex) { Log($"Setup error: {ex.Message}"); }
+            }
+            else if (State == State.Terminated)
+            {
+                // Use TryGetExistingInstance so a chart removal during NT8 teardown
+                // does not resurrect a disposed AddOn singleton.
+                try
+                {
+                    var addOn = BookFlowAddOn.TryGetExistingInstance();
+                    if (addOn != null && _tickerId != 0)
+                    {
+                        addOn.UnregisterTicker(_tickerId);
+                        _tickerId = 0;
+                    }
+                }
+                catch (Exception ex) { Log($"Teardown error: {ex.Message}"); }
             }
         }
 

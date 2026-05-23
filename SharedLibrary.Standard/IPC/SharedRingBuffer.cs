@@ -56,6 +56,22 @@ namespace BookFlow.Shared.IPC
         public void SignalDataAvailable() => _dataAvailableSemaphore.Release();
         public void WaitForData() => _dataAvailableSemaphore.WaitOne();
 
+        /// <summary>
+        /// Approximate occupancy [0,1] of the ring. Producer-side diagnostic only;
+        /// reads head/tail without synchronization, so the value is a snapshot.
+        /// </summary>
+        public double FillRatio
+        {
+            get
+            {
+                long head = _accessor.ReadInt64(HeadPosition);
+                long tail = _accessor.ReadInt64(TailPosition);
+                long used = head - tail;
+                if (used < 0) used += _capacity;
+                return _capacity > 0 ? (double)used / _capacity : 0.0;
+            }
+        }
+
         public void Dispose()
         {
             _accessor.Dispose();

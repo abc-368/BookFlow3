@@ -1,0 +1,534 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<DOCUMENT Type="Advanced Installer" CreateVersion="20.5" version="22.3" Modules="professional" RootPath="." Language="en" Id="{8971E444-7EC9-4A36-82FA-3FB0AF7625E7}">
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiPropsComponent">
+    <ROW Property="AI_BITMAP_DISPLAY_MODE" Value="0"/>
+    <ROW Property="AI_PREDEF_LCONDS_PROPS" Value="AI_DETECTED_COLOR_QUALITY;AI_DETECTED_PHYSICAL_MEMORY;AI_DETECTED_VIRTUAL_MACHINE"/>
+    <ROW Property="AI_REQUIRED_COLOR_QUALITY" MultiBuildValue="DefaultBuild:32" ValueLocId="-"/>
+    <ROW Property="AI_REQUIRED_PHYSICAL_MEMORY" MultiBuildValue="DefaultBuild:4096" ValueLocId="-"/>
+    <ROW Property="ALLUSERS" Value="1"/>
+    <ROW Property="ARPCOMMENTS" Value="This installer database contains the logic and data required to install [|ProductName]." ValueLocId="*"/>
+    <ROW Property="ARPNOMODIFY" MultiBuildValue="DefaultBuild:1"/>
+    <ROW Property="ARPPRODUCTICON" Value="icon.exe" Type="8"/>
+    <ROW Property="LIMITUI" MultiBuildValue="DefaultBuild:1"/>
+    <ROW Property="Manufacturer" Value="NetAlgo"/>
+    <ROW Property="ProductCode" Value="1033:{B352107A-21E5-44BD-B0BA-D5CE2381B0D8} " Type="16"/>
+    <ROW Property="ProductLanguage" Value="1033"/>
+    <ROW Property="ProductName" Value="BookFlow"/>
+    <ROW Property="ProductVersion" Value="1.0.0" Options="32"/>
+    <ROW Property="SecureCustomProperties" Value="OLDPRODUCTS;AI_NEWERPRODUCTFOUND"/>
+    <ROW Property="UpgradeCode" Value="{D65C2F10-001B-4AF4-96A8-F7A873241A83}"/>
+    <ROW Property="WindowsType9X" MultiBuildValue="DefaultBuild:Windows 9x/ME" ValueLocId="-"/>
+    <ROW Property="WindowsType9XDisplay" MultiBuildValue="DefaultBuild:Windows 9x/ME" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT" MultiBuildValue="DefaultBuild:Windows 9x/ME/NT/2000/XP/Vista/Windows 7/Windows 8 x86/Windows 8.1 x86/Windows 10 x86" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT40" MultiBuildValue="DefaultBuild:Windows NT 4.0" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT40Display" MultiBuildValue="DefaultBuild:Windows NT 4.0" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT50" MultiBuildValue="DefaultBuild:Windows 2000" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT50Display" MultiBuildValue="DefaultBuild:Windows 2000" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT5X" MultiBuildValue="DefaultBuild:Windows XP/2003" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT5XDisplay" MultiBuildValue="DefaultBuild:Windows XP/2003" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT60" MultiBuildValue="DefaultBuild:Windows Vista/Server 2008" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT60Display" MultiBuildValue="DefaultBuild:Windows Vista/Server 2008" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT64" MultiBuildValue="DefaultBuild:Windows 7 x64, Windows Server 2008 R2 x64, Windows 8 x64, Windows Server 2012 x64, Windows 8.1 x64, Windows Server 2012 R2 x64, Windows 10 x64, Windows Server x64" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNT64Display" MultiBuildValue="DefaultBuild:Windows 7 x64, Windows Server 2008 R2 x64, Windows 8 x64, Windows Server 2012 x64, Windows 8.1 x64, Windows Server 2012 R2 x64, Windows 10 x64, Windows Server x64" ValueLocId="-"/>
+    <ROW Property="WindowsTypeNTDisplay" MultiBuildValue="DefaultBuild:32-bit Windows versions" ValueLocId="-"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiDirsComponent">
+    <ROW Directory="APPDIR" Directory_Parent="TARGETDIR" DefaultDir="APPDIR:." IsPseudoRoot="1"/>
+    <ROW Directory="Custom_Dir" Directory_Parent="bin_Dir" DefaultDir="Custom"/>
+    <ROW Directory="DesktopFolder" Directory_Parent="TARGETDIR" DefaultDir="DESKTO~1|DesktopFolder" IsPseudoRoot="1"/>
+    <ROW Directory="NinjaTrader8_Dir" Directory_Parent="PersonalFolder" DefaultDir="NINJAT~1|NinjaTrader 8"/>
+    <ROW Directory="PersonalFolder" Directory_Parent="TARGETDIR" DefaultDir="PERSON~1|PersonalFolder" IsPseudoRoot="1"/>
+    <ROW Directory="TARGETDIR" DefaultDir="SourceDir"/>
+    <ROW Directory="bin_Dir" Directory_Parent="NinjaTrader8_Dir" DefaultDir="bin"/>
+    <ROW Directory="cs_Dir" Directory_Parent="APPDIR" DefaultDir="cs"/>
+    <ROW Directory="de_Dir" Directory_Parent="APPDIR" DefaultDir="de"/>
+    <ROW Directory="es_Dir" Directory_Parent="APPDIR" DefaultDir="es"/>
+    <ROW Directory="fr_Dir" Directory_Parent="APPDIR" DefaultDir="fr"/>
+    <ROW Directory="it_Dir" Directory_Parent="APPDIR" DefaultDir="it"/>
+    <ROW Directory="ja_Dir" Directory_Parent="APPDIR" DefaultDir="ja"/>
+    <ROW Directory="ko_Dir" Directory_Parent="APPDIR" DefaultDir="ko"/>
+    <ROW Directory="lib_Dir" Directory_Parent="win_Dir" DefaultDir="lib"/>
+    <ROW Directory="net8.0_Dir" Directory_Parent="lib_Dir" DefaultDir="net8.0"/>
+    <ROW Directory="pl_Dir" Directory_Parent="APPDIR" DefaultDir="pl"/>
+    <ROW Directory="ptBR_Dir" Directory_Parent="APPDIR" DefaultDir="pt-BR"/>
+    <ROW Directory="ru_Dir" Directory_Parent="APPDIR" DefaultDir="ru"/>
+    <ROW Directory="runtimes_Dir" Directory_Parent="APPDIR" DefaultDir="runtimes"/>
+    <ROW Directory="tr_Dir" Directory_Parent="APPDIR" DefaultDir="tr"/>
+    <ROW Directory="win_Dir" Directory_Parent="runtimes_Dir" DefaultDir="win"/>
+    <ROW Directory="zhHans_Dir" Directory_Parent="APPDIR" DefaultDir="zh-Hans"/>
+    <ROW Directory="zhHant_Dir" Directory_Parent="APPDIR" DefaultDir="zh-Hant"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiCompsComponent">
+    <ROW Component="APPDIR" ComponentId="{E2A1F48A-A347-43D1-8586-F201344D07F4}" Directory_="APPDIR" Attributes="0"/>
+    <ROW Component="BookFlow.App.deps.json" ComponentId="{9B9127F9-E2C3-4DBB-A88A-D4E271A54CAF}" Directory_="APPDIR" Attributes="0" KeyPath="BookFlow.App.deps.json" Type="0"/>
+    <ROW Component="BookFlow.App.dll" ComponentId="{1DE66843-F2A3-4273-9412-DC186637A875}" Directory_="APPDIR" Attributes="0" KeyPath="BookFlow.App.dll"/>
+    <ROW Component="BookFlow.App.exe" ComponentId="{579217A4-98E5-42CA-A683-2350563E2BBE}" Directory_="APPDIR" Attributes="256" KeyPath="BookFlow.App.exe"/>
+    <ROW Component="BookFlow.Shared.dll" ComponentId="{774D3739-B785-499C-A3CC-F7A1FB049172}" Directory_="APPDIR" Attributes="0" KeyPath="BookFlow.Shared.dll"/>
+    <ROW Component="BookFlow.Shared.dll_1" ComponentId="{6234D552-7762-405D-ADB7-D9D6D22184F7}" Directory_="Custom_Dir" Attributes="0" KeyPath="BookFlow.Shared.dll_1"/>
+    <ROW Component="BookFlow.exe" ComponentId="{7DB1F2FF-FB37-4659-8B74-01D0F8A2621C}" Directory_="APPDIR" Attributes="256" KeyPath="BookFlow.exe"/>
+    <ROW Component="DevExpress.CodeParser.v25.1.dll" ComponentId="{2D5FC55C-E0CC-477E-8842-2EED2336682C}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.CodeParser.v25.1.dll"/>
+    <ROW Component="DevExpress.Data.Desktop.v25.1.dll" ComponentId="{1C290F25-39DD-4C8B-A2F0-7FD4CE14240F}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Data.Desktop.v25.1.dll"/>
+    <ROW Component="DevExpress.Data.v25.1.dll" ComponentId="{10CAA1B4-9601-4455-98F7-B1EA9E4E2F1E}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Data.v25.1.dll"/>
+    <ROW Component="DevExpress.DataAccess.v25.1.dll" ComponentId="{C3C6C502-1E14-49B0-B6A5-B6A49E44EE79}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.DataAccess.v25.1.dll"/>
+    <ROW Component="DevExpress.Drawing.v25.1.dll" ComponentId="{23815461-1C73-49E5-A0C0-0170FB3E983B}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Drawing.v25.1.dll"/>
+    <ROW Component="DevExpress.Images.v25.1.dll" ComponentId="{94827CB1-A243-4A49-96BA-27EFA7C3CB98}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Images.v25.1.dll"/>
+    <ROW Component="DevExpress.Mvvm.v25.1.dll" ComponentId="{F92F3192-69F4-479E-B4C7-742D841C25BB}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Mvvm.v25.1.dll"/>
+    <ROW Component="DevExpress.Office.v25.1.Core.dll" ComponentId="{0AF344EA-7C1F-493B-AA59-1CF0275CC87D}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Office.v25.1.Core.dll"/>
+    <ROW Component="DevExpress.Pdf.v25.1.Core.dll" ComponentId="{74A83BC0-B3DA-4EED-9D41-3E5E2A7070E8}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Pdf.v25.1.Core.dll"/>
+    <ROW Component="DevExpress.Pdf.v25.1.Drawing.dll" ComponentId="{8BBAC151-F00A-4F28-BC89-8CB27DEC3552}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Pdf.v25.1.Drawing.dll"/>
+    <ROW Component="DevExpress.Printing.v25.1.Core.dll" ComponentId="{27BF3AD6-12D9-48C5-8C1E-71CD057F0599}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Printing.v25.1.Core.dll"/>
+    <ROW Component="DevExpress.RichEdit.v25.1.Core.dll" ComponentId="{E68636B7-1647-498C-9C01-AC974BA91100}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.RichEdit.v25.1.Core.dll"/>
+    <ROW Component="DevExpress.Xpf.Controls.v25.1.dll" ComponentId="{69139C6F-67AD-4D07-BF28-50EE5CF458A9}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Controls.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.Core.v25.1.dll" ComponentId="{517D4366-BCCF-4B2E-AC4D-DA20905E577A}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Core.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.Docking.v25.1.dll" ComponentId="{12220349-35CC-42D4-8CAE-7F3FD21DEFBA}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Docking.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.DocumentViewer.v25.1.Core.dll" ComponentId="{0EEFD5BC-E0BC-411C-82E8-4F65D1B641E8}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.DocumentViewer.v25.1.Core.dll"/>
+    <ROW Component="DevExpress.Xpf.ExpressionEditor.v25.1.dll" ComponentId="{3C26EF60-C3CE-45B6-96EF-030F059E357D}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.ExpressionEditor.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.Grid.v25.1.Core.dll" ComponentId="{B9165229-BCCE-4BC5-B570-D9EBBDA0DC4F}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Grid.v25.1.Core.dll"/>
+    <ROW Component="DevExpress.Xpf.Grid.v25.1.Extensions.dll" ComponentId="{4CB56DBE-E256-461A-95F2-C4F66D753AD1}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Grid.v25.1.Extensions.dll"/>
+    <ROW Component="DevExpress.Xpf.Grid.v25.1.dll" ComponentId="{D8FA9ACF-F86D-4BFC-AA65-C32606CDB90F}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Grid.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.Layout.v25.1.Core.dll" ComponentId="{B1B5D97F-8DD2-4BFE-82B9-EC1A44102F3A}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Layout.v25.1.Core.dll"/>
+    <ROW Component="DevExpress.Xpf.LayoutControl.v25.1.dll" ComponentId="{ED7ECB13-87BE-468F-A0A9-8C5BA8CB843A}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.LayoutControl.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.Office.v25.1.dll" ComponentId="{91118863-4493-4D18-B445-94B660DF7715}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Office.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.Printing.v25.1.dll" ComponentId="{B83E9230-71D2-47CF-B284-0913F833B281}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Printing.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.Ribbon.v25.1.dll" ComponentId="{52C6F80A-D39A-47A0-BB3F-B12FC45BD4AD}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Ribbon.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.RichEdit.v25.1.dll" ComponentId="{786F6639-6235-4441-891A-8DC0208ECDA1}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.RichEdit.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpf.Themes.Office2019Colorful.v25.1.dll" ComponentId="{A4F3050B-8CAF-4AC7-B0A1-975E12C41B89}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpf.Themes.Office2019Colorful.v25.1.dll"/>
+    <ROW Component="DevExpress.Xpo.v25.1.dll" ComponentId="{5AC6C62C-09AD-4010-91EE-72D2738038D7}" Directory_="APPDIR" Attributes="0" KeyPath="DevExpress.Xpo.v25.1.dll"/>
+    <ROW Component="Microsoft.Extensions.DependencyInjection.Abstractions.dll" ComponentId="{AEA92FC1-9216-45F3-8428-C7E9BC3EF117}" Directory_="APPDIR" Attributes="0" KeyPath="Microsoft.Extensions.DependencyInjection.Abstractions.dll"/>
+    <ROW Component="Microsoft.Extensions.DependencyInjection.dll" ComponentId="{DFDBEF7A-F27A-4F91-A5AC-290CEC425152}" Directory_="APPDIR" Attributes="0" KeyPath="Microsoft.Extensions.DependencyInjection.dll"/>
+    <ROW Component="Microsoft.Extensions.ObjectPool.dll" ComponentId="{E20454DA-498B-446B-A18B-0468D00E0990}" Directory_="APPDIR" Attributes="0" KeyPath="Microsoft.Extensions.ObjectPool.dll"/>
+    <ROW Component="NT8DataEngine.dll" ComponentId="{7E33A01A-37F7-4CEE-96FA-90EBE51602A6}" Directory_="Custom_Dir" Attributes="256" KeyPath="NT8DataEngine.dll"/>
+    <ROW Component="ProductInformation" ComponentId="{D6F3D107-9588-4841-95BE-CFDB57D601CD}" Directory_="APPDIR" Attributes="4" KeyPath="Version"/>
+    <ROW Component="System.Data.OleDb.dll" ComponentId="{BF12C52A-67EF-49FC-B408-4B57F221DF82}" Directory_="net8.0_Dir" Attributes="0" KeyPath="System.Data.OleDb.dll"/>
+    <ROW Component="System.Data.OleDb.dll_1" ComponentId="{71763CC3-7CA4-4BFA-A05E-41CF147A479B}" Directory_="APPDIR" Attributes="0" KeyPath="System.Data.OleDb.dll_1"/>
+    <ROW Component="System.Reactive.dll" ComponentId="{904081DE-E7C1-4A63-BB3B-68454BD2E511}" Directory_="APPDIR" Attributes="0" KeyPath="System.Reactive.dll"/>
+    <ROW Component="System.ServiceModel.Duplex.dll" ComponentId="{AEDE0AB0-B60A-4E88-B0F6-8D03B5394844}" Directory_="APPDIR" Attributes="0" KeyPath="System.ServiceModel.Duplex.dll"/>
+    <ROW Component="System.ServiceModel.Http.dll" ComponentId="{46A2BFBE-04A7-4304-87EE-5A7A0BDAF70D}" Directory_="APPDIR" Attributes="0" KeyPath="System.ServiceModel.Http.dll"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll" ComponentId="{15BC4675-DDF0-4390-BBD2-805E43630226}" Directory_="cs_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_1" ComponentId="{9EEC4B40-93AE-4084-91F3-E14C5FD30F2A}" Directory_="de_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_1"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_10" ComponentId="{2C73D6C8-F20C-4EA3-ADC6-C897844F9399}" Directory_="tr_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_10"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_11" ComponentId="{CD928F7F-0155-4347-A621-F6B0016E9A52}" Directory_="zhHans_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_11"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_12" ComponentId="{CB8A7688-0867-4DA3-826F-91A79C3E5019}" Directory_="zhHant_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_12"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_2" ComponentId="{CEA1B035-EBE0-4AF2-8217-494CE3F67D73}" Directory_="es_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_2"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_3" ComponentId="{2EC3EC31-E04A-4CDD-AF0D-5B8642159A45}" Directory_="fr_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_3"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_4" ComponentId="{502CB230-898B-4026-86AE-8A1F4D675382}" Directory_="it_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_4"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_5" ComponentId="{DF4B31D1-8C68-479F-B928-F75E53C6B124}" Directory_="ja_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_5"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_6" ComponentId="{4A22232C-F02C-48FA-8C07-80710C7EB409}" Directory_="ko_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_6"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_7" ComponentId="{A4F92F3D-81B3-42BD-90C0-7B27CBE37700}" Directory_="pl_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_7"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_8" ComponentId="{008AAFF3-6BFC-4335-A7C8-75EFCA5334BC}" Directory_="ptBR_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_8"/>
+    <ROW Component="System.ServiceModel.Http.resources.dll_9" ComponentId="{73E94614-3C11-41D1-89D5-A122F33CCCCA}" Directory_="ru_Dir" Attributes="0" KeyPath="System.ServiceModel.Http.resources.dll_9"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.dll" ComponentId="{BB108B33-D37E-41D2-A71C-B23F38524E10}" Directory_="APPDIR" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.dll"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll" ComponentId="{C7E75FB5-13E1-48F9-A583-40DD8F867258}" Directory_="cs_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_1" ComponentId="{BC10611D-578D-46BD-B5E4-ADD337906235}" Directory_="de_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_1"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_10" ComponentId="{66C3CB9B-F2F1-496D-80A7-FF8D9C0D0637}" Directory_="tr_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_10"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_11" ComponentId="{BA293FD9-C3DD-49D4-9B66-BFB4ECDCAF9C}" Directory_="zhHans_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_11"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_12" ComponentId="{766FDD7F-A3B7-493C-B074-9AD360AF68CB}" Directory_="zhHant_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_12"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_2" ComponentId="{819CFD3D-DE6F-48C2-849B-6E26D8EEE8EF}" Directory_="es_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_2"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_3" ComponentId="{CD3CF415-0A75-452C-BE22-3943E780BD03}" Directory_="fr_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_3"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_4" ComponentId="{8C5B3505-A236-4218-86DC-50A8C7CE106F}" Directory_="it_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_4"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_5" ComponentId="{6881825E-2687-4723-BD48-A6097D516AC5}" Directory_="ja_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_5"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_6" ComponentId="{F2A2A88D-224B-4C46-9051-B4E14B875AE3}" Directory_="ko_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_6"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_7" ComponentId="{E139B72D-45C5-45D7-B1E4-E591F95B595C}" Directory_="pl_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_7"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_8" ComponentId="{1DE37C8B-3232-4E7E-AF08-7FDDBA084DBC}" Directory_="ptBR_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_8"/>
+    <ROW Component="System.ServiceModel.NetFramingBase.resources.dll_9" ComponentId="{BAC53F5D-7D74-41C4-90F6-8B58BDE61E96}" Directory_="ru_Dir" Attributes="0" KeyPath="System.ServiceModel.NetFramingBase.resources.dll_9"/>
+    <ROW Component="System.ServiceModel.NetTcp.dll" ComponentId="{906A2141-C92F-4B39-A745-22F3F03E4061}" Directory_="APPDIR" Attributes="0" KeyPath="System.ServiceModel.NetTcp.dll"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll" ComponentId="{974E1069-A282-4A05-ACF4-52EC77D2AF0A}" Directory_="cs_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_1" ComponentId="{B8E6B8CA-1A00-4958-987F-15C69DB152F1}" Directory_="de_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_1"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_10" ComponentId="{F75801CA-BD79-4996-BB32-2DAA13BA0AEF}" Directory_="tr_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_10"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_11" ComponentId="{C59AD7A4-EFDB-4A67-848D-D4B37556FFEF}" Directory_="zhHans_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_11"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_12" ComponentId="{68B90688-B88C-44B9-B3A1-85FF107A92D6}" Directory_="zhHant_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_12"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_2" ComponentId="{41B724DA-71EA-40AA-8949-0BA1F027700F}" Directory_="es_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_2"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_3" ComponentId="{ADE0D78D-79E0-4749-8A36-7EF5B169552D}" Directory_="fr_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_3"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_4" ComponentId="{1199E3B0-B44C-4807-8F19-1F95DDE3C0D5}" Directory_="it_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_4"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_5" ComponentId="{0C84C6E1-A18E-41F7-95A6-A38F3CD5D765}" Directory_="ja_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_5"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_6" ComponentId="{DFCEC927-4E5D-4DEE-9524-11B903A3E7DC}" Directory_="ko_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_6"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_7" ComponentId="{67D1D350-1FC0-47A1-A29E-CCFEFF2BF38F}" Directory_="pl_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_7"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_8" ComponentId="{D557BBEF-9444-4E81-B134-066DE3087015}" Directory_="ptBR_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_8"/>
+    <ROW Component="System.ServiceModel.NetTcp.resources.dll_9" ComponentId="{60533631-60EA-451B-A891-AAD3DB5768F4}" Directory_="ru_Dir" Attributes="0" KeyPath="System.ServiceModel.NetTcp.resources.dll_9"/>
+    <ROW Component="System.ServiceModel.Primitives.dll" ComponentId="{6C0D3EE6-EA7B-41BC-B4EC-7317225F6531}" Directory_="APPDIR" Attributes="0" KeyPath="System.ServiceModel.Primitives.dll"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll" ComponentId="{76E5F777-FB1F-4EB9-B2BB-627671C4D0DD}" Directory_="cs_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_1" ComponentId="{BF1A0B29-192E-49D4-9D53-86BABC8C8E7E}" Directory_="de_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_1"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_10" ComponentId="{A1FB9604-A364-4ADD-8FC9-730D5D96B73F}" Directory_="tr_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_10"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_11" ComponentId="{218B18E9-5A53-42F7-9291-7614EF33E0FF}" Directory_="zhHans_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_11"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_12" ComponentId="{4588A807-1501-459B-9F4C-C126E9A2F092}" Directory_="zhHant_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_12"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_2" ComponentId="{0AE7D421-5C71-4374-A234-E47A688B1E75}" Directory_="es_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_2"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_3" ComponentId="{BF98EA81-7D6D-4BC9-9A19-E31243F481C2}" Directory_="fr_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_3"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_4" ComponentId="{508F334C-6E90-4210-8EB3-9247436072A6}" Directory_="it_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_4"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_5" ComponentId="{3C69E9AC-6120-4DDE-B4AA-0C9A577AE698}" Directory_="ja_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_5"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_6" ComponentId="{3A70D096-0B1A-4443-A743-D269D359C83C}" Directory_="ko_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_6"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_7" ComponentId="{D298E7DB-78AF-44D9-B945-08006093A7BF}" Directory_="pl_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_7"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_8" ComponentId="{68C4C2CF-E26D-458B-B916-2725EDE0FEE0}" Directory_="ptBR_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_8"/>
+    <ROW Component="System.ServiceModel.Primitives.resources.dll_9" ComponentId="{D5220B6A-03CD-4E14-897B-FEB57082DB44}" Directory_="ru_Dir" Attributes="0" KeyPath="System.ServiceModel.Primitives.resources.dll_9"/>
+    <ROW Component="System.ServiceModel.Security.dll" ComponentId="{39DAD56A-6031-4954-A64B-199355853369}" Directory_="APPDIR" Attributes="0" KeyPath="System.ServiceModel.Security.dll"/>
+    <ROW Component="System.ServiceModel.dll" ComponentId="{5E96DC80-C436-488E-9C17-CF23D142757B}" Directory_="APPDIR" Attributes="0" KeyPath="System.ServiceModel.dll"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiFeatsComponent">
+    <ROW Feature="MainFeature" Title="MainFeature" Description="Description" Display="1" Level="1" Directory_="APPDIR" Attributes="0"/>
+    <ATTRIBUTE name="CurrentFeature" value="MainFeature"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiFilesComponent">
+    <ROW File="System.ServiceModel.Http.resources.dll" Component_="System.ServiceModel.Http.resources.dll" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\cs\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll" Component_="System.ServiceModel.NetFramingBase.resources.dll" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\cs\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll" Component_="System.ServiceModel.NetTcp.resources.dll" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\cs\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll" Component_="System.ServiceModel.Primitives.resources.dll" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\cs\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_1" Component_="System.ServiceModel.Http.resources.dll_1" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\de\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_1" Component_="System.ServiceModel.NetFramingBase.resources.dll_1" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\de\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_1" Component_="System.ServiceModel.NetTcp.resources.dll_1" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\de\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_1" Component_="System.ServiceModel.Primitives.resources.dll_1" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\de\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_2" Component_="System.ServiceModel.Http.resources.dll_2" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\es\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_2" Component_="System.ServiceModel.NetFramingBase.resources.dll_2" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\es\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_2" Component_="System.ServiceModel.NetTcp.resources.dll_2" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\es\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_2" Component_="System.ServiceModel.Primitives.resources.dll_2" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\es\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_3" Component_="System.ServiceModel.Http.resources.dll_3" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\fr\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_3" Component_="System.ServiceModel.NetFramingBase.resources.dll_3" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\fr\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_3" Component_="System.ServiceModel.NetTcp.resources.dll_3" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\fr\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_3" Component_="System.ServiceModel.Primitives.resources.dll_3" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\fr\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_4" Component_="System.ServiceModel.Http.resources.dll_4" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\it\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_4" Component_="System.ServiceModel.NetFramingBase.resources.dll_4" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\it\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_4" Component_="System.ServiceModel.NetTcp.resources.dll_4" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\it\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_4" Component_="System.ServiceModel.Primitives.resources.dll_4" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\it\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_5" Component_="System.ServiceModel.Http.resources.dll_5" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ja\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_5" Component_="System.ServiceModel.NetFramingBase.resources.dll_5" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ja\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_5" Component_="System.ServiceModel.NetTcp.resources.dll_5" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ja\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_5" Component_="System.ServiceModel.Primitives.resources.dll_5" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ja\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_6" Component_="System.ServiceModel.Http.resources.dll_6" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ko\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_6" Component_="System.ServiceModel.NetFramingBase.resources.dll_6" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ko\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_6" Component_="System.ServiceModel.NetTcp.resources.dll_6" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ko\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_6" Component_="System.ServiceModel.Primitives.resources.dll_6" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ko\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_7" Component_="System.ServiceModel.Http.resources.dll_7" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\pl\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_7" Component_="System.ServiceModel.NetFramingBase.resources.dll_7" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\pl\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_7" Component_="System.ServiceModel.NetTcp.resources.dll_7" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\pl\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_7" Component_="System.ServiceModel.Primitives.resources.dll_7" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\pl\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_8" Component_="System.ServiceModel.Http.resources.dll_8" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\pt-BR\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_8" Component_="System.ServiceModel.NetFramingBase.resources.dll_8" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\pt-BR\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_8" Component_="System.ServiceModel.NetTcp.resources.dll_8" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\pt-BR\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_8" Component_="System.ServiceModel.Primitives.resources.dll_8" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\pt-BR\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_9" Component_="System.ServiceModel.Http.resources.dll_9" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ru\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_9" Component_="System.ServiceModel.NetFramingBase.resources.dll_9" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ru\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_9" Component_="System.ServiceModel.NetTcp.resources.dll_9" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ru\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_9" Component_="System.ServiceModel.Primitives.resources.dll_9" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\ru\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.Data.OleDb.dll" Component_="System.Data.OleDb.dll" FileName="SYSTEM~1.DLL|System.Data.OleDb.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\runtimes\win\lib\net8.0\System.Data.OleDb.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_10" Component_="System.ServiceModel.Http.resources.dll_10" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\tr\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_10" Component_="System.ServiceModel.NetFramingBase.resources.dll_10" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\tr\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_10" Component_="System.ServiceModel.NetTcp.resources.dll_10" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\tr\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_10" Component_="System.ServiceModel.Primitives.resources.dll_10" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\tr\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_11" Component_="System.ServiceModel.Http.resources.dll_11" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\zh-Hans\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_11" Component_="System.ServiceModel.NetFramingBase.resources.dll_11" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\zh-Hans\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_11" Component_="System.ServiceModel.NetTcp.resources.dll_11" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\zh-Hans\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_11" Component_="System.ServiceModel.Primitives.resources.dll_11" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\zh-Hans\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.resources.dll_12" Component_="System.ServiceModel.Http.resources.dll_12" FileName="SYSTEM~1.DLL|System.ServiceModel.Http.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\zh-Hant\System.ServiceModel.Http.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.resources.dll_12" Component_="System.ServiceModel.NetFramingBase.resources.dll_12" FileName="SYSTEM~2.DLL|System.ServiceModel.NetFramingBase.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\zh-Hant\System.ServiceModel.NetFramingBase.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.resources.dll_12" Component_="System.ServiceModel.NetTcp.resources.dll_12" FileName="SYSTEM~3.DLL|System.ServiceModel.NetTcp.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\zh-Hant\System.ServiceModel.NetTcp.resources.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.resources.dll_12" Component_="System.ServiceModel.Primitives.resources.dll_12" FileName="SYSTEM~4.DLL|System.ServiceModel.Primitives.resources.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\zh-Hant\System.ServiceModel.Primitives.resources.dll" SelfReg="false"/>
+    <ROW File="BookFlow.App.deps.json" Component_="BookFlow.App.deps.json" FileName="BOOKFL~1.JSO|BookFlow.App.deps.json" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.App.deps.json" SelfReg="false"/>
+    <ROW File="BookFlow.App.dll" Component_="BookFlow.App.dll" FileName="BOOKFL~1.DLL|BookFlow.App.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.App.dll" SelfReg="false"/>
+    <ROW File="bookflow.app.dll.hash" Component_="BookFlow.App.deps.json" FileName="BOOKFL~1.HAS|bookflow.app.dll.hash" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\bookflow.app.dll.hash" SelfReg="false"/>
+    <ROW File="BookFlow.App.exe" Component_="BookFlow.App.exe" FileName="BOOKFL~1.EXE|BookFlow.App.exe" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.App.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="BookFlow.App.pdb" Component_="BookFlow.App.exe" FileName="BOOKFL~1.PDB|BookFlow.App.pdb" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.App.pdb" SelfReg="false"/>
+    <ROW File="BookFlow.App.runtimeconfig.json" Component_="BookFlow.App.deps.json" FileName="BOOKFL~2.JSO|BookFlow.App.runtimeconfig.json" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.App.runtimeconfig.json" SelfReg="false"/>
+    <ROW File="BookFlow.exe" Component_="BookFlow.exe" FileName="BookFlow.exe" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.exe" SelfReg="false" DigSign="true"/>
+    <ROW File="BookFlow.Shared.dll" Component_="BookFlow.Shared.dll" FileName="BOOKFL~2.DLL|BookFlow.Shared.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.Shared.dll" SelfReg="false"/>
+    <ROW File="BookFlow.Shared.pdb" Component_="BookFlow.Shared.dll" FileName="BOOKFL~2.PDB|BookFlow.Shared.pdb" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.Shared.pdb" SelfReg="false"/>
+    <ROW File="DevExpress.CodeParser.v25.1.dll" Component_="DevExpress.CodeParser.v25.1.dll" FileName="DEVEXP~1.DLL|DevExpress.CodeParser.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.CodeParser.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Data.Desktop.v25.1.dll" Component_="DevExpress.Data.Desktop.v25.1.dll" FileName="DEVEXP~2.DLL|DevExpress.Data.Desktop.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Data.Desktop.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Data.v25.1.dll" Component_="DevExpress.Data.v25.1.dll" FileName="DEVEXP~3.DLL|DevExpress.Data.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Data.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.DataAccess.v25.1.dll" Component_="DevExpress.DataAccess.v25.1.dll" FileName="DEVEXP~4.DLL|DevExpress.DataAccess.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.DataAccess.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Drawing.v25.1.dll" Component_="DevExpress.Drawing.v25.1.dll" FileName="DEVEXP~5.DLL|DevExpress.Drawing.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Drawing.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Images.v25.1.dll" Component_="DevExpress.Images.v25.1.dll" FileName="DEVEXP~6.DLL|DevExpress.Images.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Images.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Mvvm.v25.1.dll" Component_="DevExpress.Mvvm.v25.1.dll" FileName="DEVEXP~7.DLL|DevExpress.Mvvm.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Mvvm.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Office.v25.1.Core.dll" Component_="DevExpress.Office.v25.1.Core.dll" FileName="DEVEXP~8.DLL|DevExpress.Office.v25.1.Core.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Office.v25.1.Core.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Pdf.v25.1.Core.dll" Component_="DevExpress.Pdf.v25.1.Core.dll" FileName="DEVEXP~9.DLL|DevExpress.Pdf.v25.1.Core.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Pdf.v25.1.Core.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Pdf.v25.1.Drawing.dll" Component_="DevExpress.Pdf.v25.1.Drawing.dll" FileName="DEVEX~10.DLL|DevExpress.Pdf.v25.1.Drawing.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Pdf.v25.1.Drawing.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Printing.v25.1.Core.dll" Component_="DevExpress.Printing.v25.1.Core.dll" FileName="DEVEX~11.DLL|DevExpress.Printing.v25.1.Core.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Printing.v25.1.Core.dll" SelfReg="false"/>
+    <ROW File="DevExpress.RichEdit.v25.1.Core.dll" Component_="DevExpress.RichEdit.v25.1.Core.dll" FileName="DEVEX~12.DLL|DevExpress.RichEdit.v25.1.Core.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.RichEdit.v25.1.Core.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Controls.v25.1.dll" Component_="DevExpress.Xpf.Controls.v25.1.dll" FileName="DEVEX~13.DLL|DevExpress.Xpf.Controls.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Controls.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Core.v25.1.dll" Component_="DevExpress.Xpf.Core.v25.1.dll" FileName="DEVEX~14.DLL|DevExpress.Xpf.Core.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Core.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Docking.v25.1.dll" Component_="DevExpress.Xpf.Docking.v25.1.dll" FileName="DEVEX~15.DLL|DevExpress.Xpf.Docking.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Docking.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.DocumentViewer.v25.1.Core.dll" Component_="DevExpress.Xpf.DocumentViewer.v25.1.Core.dll" FileName="DEVEX~16.DLL|DevExpress.Xpf.DocumentViewer.v25.1.Core.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.DocumentViewer.v25.1.Core.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.ExpressionEditor.v25.1.dll" Component_="DevExpress.Xpf.ExpressionEditor.v25.1.dll" FileName="DEVEX~17.DLL|DevExpress.Xpf.ExpressionEditor.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.ExpressionEditor.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Grid.v25.1.Core.dll" Component_="DevExpress.Xpf.Grid.v25.1.Core.dll" FileName="DEVEX~18.DLL|DevExpress.Xpf.Grid.v25.1.Core.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Grid.v25.1.Core.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Grid.v25.1.dll" Component_="DevExpress.Xpf.Grid.v25.1.dll" FileName="DEVEX~19.DLL|DevExpress.Xpf.Grid.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Grid.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Grid.v25.1.Extensions.dll" Component_="DevExpress.Xpf.Grid.v25.1.Extensions.dll" FileName="DEVEX~20.DLL|DevExpress.Xpf.Grid.v25.1.Extensions.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Grid.v25.1.Extensions.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Layout.v25.1.Core.dll" Component_="DevExpress.Xpf.Layout.v25.1.Core.dll" FileName="DEVEX~21.DLL|DevExpress.Xpf.Layout.v25.1.Core.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Layout.v25.1.Core.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.LayoutControl.v25.1.dll" Component_="DevExpress.Xpf.LayoutControl.v25.1.dll" FileName="DEVEX~22.DLL|DevExpress.Xpf.LayoutControl.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.LayoutControl.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Office.v25.1.dll" Component_="DevExpress.Xpf.Office.v25.1.dll" FileName="DEVEX~23.DLL|DevExpress.Xpf.Office.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Office.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Printing.v25.1.dll" Component_="DevExpress.Xpf.Printing.v25.1.dll" FileName="DEVEX~24.DLL|DevExpress.Xpf.Printing.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Printing.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Ribbon.v25.1.dll" Component_="DevExpress.Xpf.Ribbon.v25.1.dll" FileName="DEVEX~25.DLL|DevExpress.Xpf.Ribbon.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Ribbon.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.RichEdit.v25.1.dll" Component_="DevExpress.Xpf.RichEdit.v25.1.dll" FileName="DEVEX~26.DLL|DevExpress.Xpf.RichEdit.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.RichEdit.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpf.Themes.Office2019Colorful.v25.1.dll" Component_="DevExpress.Xpf.Themes.Office2019Colorful.v25.1.dll" FileName="DEVEX~27.DLL|DevExpress.Xpf.Themes.Office2019Colorful.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpf.Themes.Office2019Colorful.v25.1.dll" SelfReg="false"/>
+    <ROW File="DevExpress.Xpo.v25.1.dll" Component_="DevExpress.Xpo.v25.1.dll" FileName="DEVEX~28.DLL|DevExpress.Xpo.v25.1.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\DevExpress.Xpo.v25.1.dll" SelfReg="false"/>
+    <ROW File="Microsoft.Extensions.DependencyInjection.Abstractions.dll" Component_="Microsoft.Extensions.DependencyInjection.Abstractions.dll" FileName="MICROS~1.DLL|Microsoft.Extensions.DependencyInjection.Abstractions.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\Microsoft.Extensions.DependencyInjection.Abstractions.dll" SelfReg="false"/>
+    <ROW File="Microsoft.Extensions.DependencyInjection.dll" Component_="Microsoft.Extensions.DependencyInjection.dll" FileName="MICROS~2.DLL|Microsoft.Extensions.DependencyInjection.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\Microsoft.Extensions.DependencyInjection.dll" SelfReg="false"/>
+    <ROW File="Microsoft.Extensions.ObjectPool.dll" Component_="Microsoft.Extensions.ObjectPool.dll" FileName="MICROS~3.DLL|Microsoft.Extensions.ObjectPool.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\Microsoft.Extensions.ObjectPool.dll" SelfReg="false"/>
+    <ROW File="System.Data.OleDb.dll_1" Component_="System.Data.OleDb.dll_1" FileName="SYSTEM~1.DLL|System.Data.OleDb.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.Data.OleDb.dll" SelfReg="false"/>
+    <ROW File="System.Reactive.dll" Component_="System.Reactive.dll" FileName="SYSTEM~2.DLL|System.Reactive.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.Reactive.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.dll" Component_="System.ServiceModel.dll" FileName="SYSTEM~3.DLL|System.ServiceModel.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.ServiceModel.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Duplex.dll" Component_="System.ServiceModel.Duplex.dll" FileName="SYSTEM~4.DLL|System.ServiceModel.Duplex.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.ServiceModel.Duplex.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Http.dll" Component_="System.ServiceModel.Http.dll" FileName="SYSTEM~5.DLL|System.ServiceModel.Http.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.ServiceModel.Http.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetFramingBase.dll" Component_="System.ServiceModel.NetFramingBase.dll" FileName="SYSTEM~6.DLL|System.ServiceModel.NetFramingBase.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.ServiceModel.NetFramingBase.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.NetTcp.dll" Component_="System.ServiceModel.NetTcp.dll" FileName="SYSTEM~7.DLL|System.ServiceModel.NetTcp.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.ServiceModel.NetTcp.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Primitives.dll" Component_="System.ServiceModel.Primitives.dll" FileName="SYSTEM~8.DLL|System.ServiceModel.Primitives.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.ServiceModel.Primitives.dll" SelfReg="false"/>
+    <ROW File="System.ServiceModel.Security.dll" Component_="System.ServiceModel.Security.dll" FileName="SYSTEM~9.DLL|System.ServiceModel.Security.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\System.ServiceModel.Security.dll" SelfReg="false"/>
+    <ROW File="BookFlow.Shared.dll_1" Component_="BookFlow.Shared.dll_1" FileName="BOOKFL~1.DLL|BookFlow.Shared.dll" Attributes="0" SourcePath="..\BookFlowApp\bin\Release\net9.0-windows\BookFlow.Shared.dll" SelfReg="false"/>
+    <ROW File="NT8DataEngine.dll" Component_="NT8DataEngine.dll" FileName="NT8DAT~1.DLL|NT8DataEngine.dll" Attributes="0" SourcePath="..\NT8DataEngine\bin\Release\net48\NT8DataEngine.dll" SelfReg="false"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.BootstrOptComponent">
+    <ROW BootstrOptKey="GlobalOptions" DownloadFolder="[AppDataFolder][|Manufacturer]\[|ProductName]\prerequisites" Options="2"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.BootstrapperUISequenceComponent">
+    <ROW Action="AI_DetectSoftware" Sequence="151"/>
+    <ROW Action="AI_BACKUP_AI_SETUPEXEPATH" Sequence="249"/>
+    <ROW Action="AI_RESTORE_AI_SETUPEXEPATH" Condition="AI_SETUPEXEPATH_ORIGINAL" Sequence="251"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.BuildComponent">
+    <ROW BuildKey="DefaultBuild" BuildName="DefaultBuild" BuildOrder="1" BuildType="0" Languages="en" InstallationType="4" UseLargeSchema="true"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.DictionaryComponent">
+    <ROW Path="&lt;AI_DICTS&gt;ui.ail"/>
+    <ROW Path="&lt;AI_DICTS&gt;ui_en.ail"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.DigCertStoreComponent">
+    <ROW TimeStampUrl="http://timestamp.digicert.com" SignerDescription="[|ProductName]" SignOptions="7" SignTool="0" UseSha256="1" Thumbprint="8e793a509a8d4419d1ed28ad462e99e60d802039 Subject: BookFlow&#10;Issuer: BookFlow&#10;Valid from 11/15/2025 to 11/15/2026" Subject="CN=BookFlow" Store="User\MY"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.FragmentComponent">
+    <ROW Fragment="CommonUI.aip" Path="&lt;AI_FRAGS&gt;CommonUI.aip"/>
+    <ROW Fragment="FolderDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\FolderDlg.aip"/>
+    <ROW Fragment="MaintenanceTypeDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\MaintenanceTypeDlg.aip"/>
+    <ROW Fragment="MaintenanceWelcomeDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\MaintenanceWelcomeDlg.aip"/>
+    <ROW Fragment="SequenceDialogs.aip" Path="&lt;AI_THEMES&gt;classic\fragments\SequenceDialogs.aip"/>
+    <ROW Fragment="Sequences.aip" Path="&lt;AI_FRAGS&gt;Sequences.aip"/>
+    <ROW Fragment="StaticUIStrings.aip" Path="&lt;AI_FRAGS&gt;StaticUIStrings.aip"/>
+    <ROW Fragment="Themes.aip" Path="&lt;AI_FRAGS&gt;Themes.aip"/>
+    <ROW Fragment="UI.aip" Path="&lt;AI_THEMES&gt;classic\fragments\UI.aip"/>
+    <ROW Fragment="Validation.aip" Path="&lt;AI_FRAGS&gt;Validation.aip"/>
+    <ROW Fragment="VerifyRemoveDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\VerifyRemoveDlg.aip"/>
+    <ROW Fragment="VerifyRepairDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\VerifyRepairDlg.aip"/>
+    <ROW Fragment="WelcomeDlg.aip" Path="&lt;AI_THEMES&gt;classic\fragments\WelcomeDlg.aip"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiActionTextComponent">
+    <ROW Action="AI_DeleteLzma" Description="Deleting files extracted from archive" DescriptionLocId="ActionText.Description.AI_DeleteLzma" TemplateLocId="-"/>
+    <ROW Action="AI_DeleteRLzma" Description="Deleting files extracted from archive" DescriptionLocId="ActionText.Description.AI_DeleteLzma" TemplateLocId="-"/>
+    <ROW Action="AI_ExtractLzma" Description="Extracting files from archive" DescriptionLocId="ActionText.Description.AI_ExtractLzma" TemplateLocId="-"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiBinaryComponent">
+    <ROW Name="SoftwareDetector.dll" SourcePath="&lt;AI_CUSTACTS&gt;SoftwareDetector.dll"/>
+    <ROW Name="aicustact.dll" SourcePath="&lt;AI_CUSTACTS&gt;aicustact.dll"/>
+    <ROW Name="lzmaextractor.dll" SourcePath="&lt;AI_CUSTACTS&gt;lzmaextractor.dll"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiControlEventComponent">
+    <ROW Dialog_="WelcomeDlg" Control_="Next" Event="NewDialog" Argument="FolderDlg" Condition="AI_INSTALL" Ordering="1"/>
+    <ROW Dialog_="FolderDlg" Control_="Next" Event="NewDialog" Argument="VerifyReadyDlg" Condition="AI_INSTALL" Ordering="201"/>
+    <ROW Dialog_="FolderDlg" Control_="Back" Event="NewDialog" Argument="WelcomeDlg" Condition="AI_INSTALL" Ordering="1"/>
+    <ROW Dialog_="MaintenanceWelcomeDlg" Control_="Next" Event="NewDialog" Argument="MaintenanceTypeDlg" Condition="AI_MAINT" Ordering="99"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Install" Event="EndDialog" Argument="Return" Condition="AI_MAINT" Ordering="198"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Back" Event="NewDialog" Argument="CustomizeDlg" Condition="AI_MAINT" Ordering="202"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Install" Event="EndDialog" Argument="Return" Condition="AI_INSTALL" Ordering="197"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Back" Event="NewDialog" Argument="FolderDlg" Condition="AI_INSTALL" Ordering="201"/>
+    <ROW Dialog_="CustomizeDlg" Control_="Next" Event="NewDialog" Argument="VerifyReadyDlg" Condition="AI_MAINT" Ordering="101"/>
+    <ROW Dialog_="CustomizeDlg" Control_="Back" Event="NewDialog" Argument="MaintenanceTypeDlg" Condition="AI_MAINT" Ordering="1"/>
+    <ROW Dialog_="MaintenanceTypeDlg" Control_="ChangeButton" Event="NewDialog" Argument="CustomizeDlg" Condition="AI_MAINT" Ordering="501"/>
+    <ROW Dialog_="MaintenanceTypeDlg" Control_="Back" Event="NewDialog" Argument="MaintenanceWelcomeDlg" Condition="AI_MAINT" Ordering="1"/>
+    <ROW Dialog_="MaintenanceTypeDlg" Control_="RemoveButton" Event="NewDialog" Argument="VerifyRemoveDlg" Condition="AI_MAINT AND InstallMode=&quot;Remove&quot;" Ordering="601"/>
+    <ROW Dialog_="VerifyRemoveDlg" Control_="Back" Event="NewDialog" Argument="MaintenanceTypeDlg" Condition="AI_MAINT AND InstallMode=&quot;Remove&quot;" Ordering="1"/>
+    <ROW Dialog_="MaintenanceTypeDlg" Control_="RepairButton" Event="NewDialog" Argument="VerifyRepairDlg" Condition="AI_MAINT AND InstallMode=&quot;Repair&quot;" Ordering="601"/>
+    <ROW Dialog_="VerifyRepairDlg" Control_="Back" Event="NewDialog" Argument="MaintenanceTypeDlg" Condition="AI_MAINT AND InstallMode=&quot;Repair&quot;" Ordering="1"/>
+    <ROW Dialog_="VerifyRepairDlg" Control_="Repair" Event="EndDialog" Argument="Return" Condition="AI_MAINT AND InstallMode=&quot;Repair&quot;" Ordering="399" Options="1"/>
+    <ROW Dialog_="VerifyRemoveDlg" Control_="Remove" Event="EndDialog" Argument="Return" Condition="AI_MAINT AND InstallMode=&quot;Remove&quot;" Ordering="299" Options="1"/>
+    <ROW Dialog_="PatchWelcomeDlg" Control_="Next" Event="NewDialog" Argument="VerifyReadyDlg" Condition="AI_PATCH" Ordering="201"/>
+    <ROW Dialog_="ResumeDlg" Control_="Install" Event="EndDialog" Argument="Return" Condition="AI_RESUME" Ordering="299"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Install" Event="EndDialog" Argument="Return" Condition="AI_PATCH" Ordering="199"/>
+    <ROW Dialog_="VerifyReadyDlg" Control_="Back" Event="NewDialog" Argument="PatchWelcomeDlg" Condition="AI_PATCH" Ordering="203"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiCreateFolderComponent">
+    <ROW Directory_="APPDIR" Component_="APPDIR" ManualDelete="true"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiCustActComponent">
+    <ROW Action="AI_BACKUP_AI_SETUPEXEPATH" Type="51" Source="AI_SETUPEXEPATH_ORIGINAL" Target="[AI_SETUPEXEPATH]"/>
+    <ROW Action="AI_DOWNGRADE" Type="19" Target="4010"/>
+    <ROW Action="AI_DeleteCadLzma" Type="51" Source="AI_DeleteLzma" Target="[AI_SETUPEXEPATH]"/>
+    <ROW Action="AI_DeleteLzma" Type="1025" Source="lzmaextractor.dll" Target="DeleteLZMAFiles"/>
+    <ROW Action="AI_DeleteRCadLzma" Type="51" Source="AI_DeleteRLzma" Target="[AI_SETUPEXEPATH]"/>
+    <ROW Action="AI_DeleteRLzma" Type="1281" Source="lzmaextractor.dll" Target="DeleteLZMAFiles"/>
+    <ROW Action="AI_DetectSoftware" Type="257" Source="SoftwareDetector.dll" Target="OnDetectSoftware"/>
+    <ROW Action="AI_DpiContentScale" Type="1" Source="aicustact.dll" Target="DpiContentScale"/>
+    <ROW Action="AI_EnableDebugLog" Type="321" Source="aicustact.dll" Target="EnableDebugLog"/>
+    <ROW Action="AI_ExtractCadLzma" Type="51" Source="AI_ExtractLzma" Target="[AI_SETUPEXEPATH]"/>
+    <ROW Action="AI_ExtractLzma" Type="1025" Source="lzmaextractor.dll" Target="ExtractLZMAFiles"/>
+    <ROW Action="AI_FindExeLzma" Type="1" Source="lzmaextractor.dll" Target="FindEXE"/>
+    <ROW Action="AI_InstallModeCheck" Type="1" Source="aicustact.dll" Target="UpdateInstallMode" WithoutSeq="true"/>
+    <ROW Action="AI_PREPARE_UPGRADE" Type="65" Source="aicustact.dll" Target="PrepareUpgrade"/>
+    <ROW Action="AI_PRESERVE_INSTALL_TYPE" Type="65" Source="aicustact.dll" Target="PreserveInstallType"/>
+    <ROW Action="AI_RESTORE_AI_SETUPEXEPATH" Type="51" Source="AI_SETUPEXEPATH" Target="[AI_SETUPEXEPATH_ORIGINAL]"/>
+    <ROW Action="AI_RESTORE_LOCATION" Type="65" Source="aicustact.dll" Target="RestoreLocation"/>
+    <ROW Action="AI_ResolveKnownFolders" Type="1" Source="aicustact.dll" Target="AI_ResolveKnownFolders"/>
+    <ROW Action="AI_SHOW_LOG" Type="65" Source="aicustact.dll" Target="LaunchLogFile" WithoutSeq="true"/>
+    <ROW Action="AI_STORE_LOCATION" Type="51" Source="ARPINSTALLLOCATION" Target="[APPDIR]"/>
+    <ROW Action="SET_APPDIR" Type="307" Source="APPDIR" Target="[ProgramFilesFolder][Manufacturer]\[ProductName]"/>
+    <ROW Action="SET_SHORTCUTDIR" Type="307" Source="SHORTCUTDIR" Target="[ProgramMenuFolder][ProductName]"/>
+    <ROW Action="SET_TARGETDIR_TO_APPDIR" Type="51" Source="TARGETDIR" Target="[APPDIR]"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiFeatCompsComponent">
+    <ROW Feature_="MainFeature" Component_="APPDIR"/>
+    <ROW Feature_="MainFeature" Component_="ProductInformation"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_1"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_1"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_1"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_1"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_2"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_2"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_2"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_2"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_3"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_3"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_3"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_3"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_4"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_4"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_4"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_4"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_5"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_5"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_5"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_5"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_6"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_6"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_6"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_6"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_7"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_7"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_7"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_7"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_8"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_8"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_8"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_8"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_9"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_9"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_9"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_9"/>
+    <ROW Feature_="MainFeature" Component_="System.Data.OleDb.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_10"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_10"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_10"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_10"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_11"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_11"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_11"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_11"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.resources.dll_12"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.resources.dll_12"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.resources.dll_12"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.resources.dll_12"/>
+    <ROW Feature_="MainFeature" Component_="BookFlow.App.deps.json"/>
+    <ROW Feature_="MainFeature" Component_="BookFlow.App.dll"/>
+    <ROW Feature_="MainFeature" Component_="BookFlow.App.exe"/>
+    <ROW Feature_="MainFeature" Component_="BookFlow.exe"/>
+    <ROW Feature_="MainFeature" Component_="BookFlow.Shared.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.CodeParser.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Data.Desktop.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Data.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.DataAccess.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Drawing.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Images.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Mvvm.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Office.v25.1.Core.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Pdf.v25.1.Core.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Pdf.v25.1.Drawing.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Printing.v25.1.Core.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.RichEdit.v25.1.Core.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Controls.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Core.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Docking.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.DocumentViewer.v25.1.Core.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.ExpressionEditor.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Grid.v25.1.Core.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Grid.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Grid.v25.1.Extensions.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Layout.v25.1.Core.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.LayoutControl.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Office.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Printing.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Ribbon.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.RichEdit.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpf.Themes.Office2019Colorful.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="DevExpress.Xpo.v25.1.dll"/>
+    <ROW Feature_="MainFeature" Component_="Microsoft.Extensions.DependencyInjection.Abstractions.dll"/>
+    <ROW Feature_="MainFeature" Component_="Microsoft.Extensions.DependencyInjection.dll"/>
+    <ROW Feature_="MainFeature" Component_="Microsoft.Extensions.ObjectPool.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.Data.OleDb.dll_1"/>
+    <ROW Feature_="MainFeature" Component_="System.Reactive.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Duplex.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Http.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetFramingBase.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.NetTcp.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Primitives.dll"/>
+    <ROW Feature_="MainFeature" Component_="System.ServiceModel.Security.dll"/>
+    <ROW Feature_="MainFeature" Component_="NT8DataEngine.dll"/>
+    <ROW Feature_="MainFeature" Component_="BookFlow.Shared.dll_1"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiIconsComponent">
+    <ROW Name="icon.exe" SourcePath="..\..\..\..\Downloads\icon.ico" Index="0"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiInstExSeqComponent">
+    <ROW Action="AI_DOWNGRADE" Condition="AI_NEWERPRODUCTFOUND AND (UILevel &lt;&gt; 5)" Sequence="210"/>
+    <ROW Action="AI_RESTORE_LOCATION" Condition="APPDIR=&quot;&quot;" Sequence="749"/>
+    <ROW Action="AI_STORE_LOCATION" Condition="(Not Installed) OR REINSTALL" Sequence="1501"/>
+    <ROW Action="AI_PREPARE_UPGRADE" Condition="AI_UPGRADE=&quot;No&quot; AND (Not Installed)" Sequence="1397"/>
+    <ROW Action="AI_ResolveKnownFolders" Sequence="52"/>
+    <ROW Action="AI_EnableDebugLog" Sequence="51"/>
+    <ROW Action="AI_DetectSoftware" Sequence="102"/>
+    <ROW Action="AI_BACKUP_AI_SETUPEXEPATH" Sequence="99" Builds="DefaultBuild"/>
+    <ROW Action="AI_RESTORE_AI_SETUPEXEPATH" Condition="AI_SETUPEXEPATH_ORIGINAL" Sequence="101" Builds="DefaultBuild"/>
+    <ROW Action="AI_DeleteCadLzma" Condition="SETUPEXEDIR=&quot;&quot; AND Installed AND (REMOVE&lt;&gt;&quot;ALL&quot;) AND (AI_INSTALL_MODE&lt;&gt;&quot;Remove&quot;) AND (NOT PATCH)" Sequence="199" Builds="DefaultBuild"/>
+    <ROW Action="AI_DeleteRCadLzma" Condition="SETUPEXEDIR=&quot;&quot; AND Installed AND (REMOVE&lt;&gt;&quot;ALL&quot;) AND (AI_INSTALL_MODE&lt;&gt;&quot;Remove&quot;) AND (NOT PATCH)" Sequence="198" Builds="DefaultBuild"/>
+    <ROW Action="AI_ExtractCadLzma" Condition="SETUPEXEDIR=&quot;&quot; AND Installed AND (REMOVE&lt;&gt;&quot;ALL&quot;) AND (AI_INSTALL_MODE&lt;&gt;&quot;Remove&quot;) AND (NOT PATCH)" Sequence="197" Builds="DefaultBuild"/>
+    <ROW Action="AI_FindExeLzma" Condition="SETUPEXEDIR=&quot;&quot; AND Installed AND (REMOVE&lt;&gt;&quot;ALL&quot;) AND (AI_INSTALL_MODE&lt;&gt;&quot;Remove&quot;) AND (NOT PATCH)" Sequence="196" Builds="DefaultBuild"/>
+    <ROW Action="AI_ExtractLzma" Condition="SETUPEXEDIR=&quot;&quot; AND Installed AND (REMOVE&lt;&gt;&quot;ALL&quot;) AND (AI_INSTALL_MODE&lt;&gt;&quot;Remove&quot;) AND (NOT PATCH)" Sequence="1549" Builds="DefaultBuild"/>
+    <ROW Action="AI_DeleteRLzma" Condition="SETUPEXEDIR=&quot;&quot; AND Installed AND (REMOVE&lt;&gt;&quot;ALL&quot;) AND (AI_INSTALL_MODE&lt;&gt;&quot;Remove&quot;) AND (NOT PATCH)" Sequence="1548" Builds="DefaultBuild"/>
+    <ROW Action="AI_DeleteLzma" Condition="SETUPEXEDIR=&quot;&quot; AND Installed AND (REMOVE&lt;&gt;&quot;ALL&quot;) AND (AI_INSTALL_MODE&lt;&gt;&quot;Remove&quot;) AND (NOT PATCH)" Sequence="6599" Builds="DefaultBuild"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiInstallUISequenceComponent">
+    <ROW Action="AI_PRESERVE_INSTALL_TYPE" Sequence="199"/>
+    <ROW Action="AI_RESTORE_LOCATION" Condition="APPDIR=&quot;&quot;" Sequence="749"/>
+    <ROW Action="AI_ResolveKnownFolders" Sequence="53"/>
+    <ROW Action="AI_DpiContentScale" Sequence="52"/>
+    <ROW Action="AI_EnableDebugLog" Sequence="51"/>
+    <ROW Action="AI_DetectSoftware" Sequence="102"/>
+    <ROW Action="AI_BACKUP_AI_SETUPEXEPATH" Sequence="99"/>
+    <ROW Action="AI_RESTORE_AI_SETUPEXEPATH" Condition="AI_SETUPEXEPATH_ORIGINAL" Sequence="101"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiLaunchConditionsComponent">
+    <ROW Condition="( Version9X OR ( NOT VersionNT64 ) OR ( VersionNT64 AND ((VersionNT64 &lt;&gt; 601) OR (MsiNTProductType &lt;&gt; 1)) AND ((VersionNT64 &lt;&gt; 601) OR (MsiNTProductType = 1)) AND ((VersionNT64 &lt;&gt; 602) OR (MsiNTProductType &lt;&gt; 1)) AND ((VersionNT64 &lt;&gt; 602) OR (MsiNTProductType = 1)) AND ((VersionNT64 &lt;&gt; 603) OR (MsiNTProductType &lt;&gt; 1)) AND ((VersionNT64 &lt;&gt; 603) OR (MsiNTProductType = 1)) AND ((VersionNT64 &lt;&gt; 1000) OR (MsiNTProductType &lt;&gt; 1)) AND ((VersionNT64 &lt;&gt; 1000 AND VersionNT64 &lt;&gt; 1100) OR (MsiNTProductType = 1)) ) )" Description="[ProductName] cannot be installed on the following Windows versions: [WindowsTypeNT64Display]." DescriptionLocId="AI.LaunchCondition.NoSpecificNT64" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="( Version9X OR VersionNT64 )" Description="[ProductName] cannot be installed on [WindowsTypeNTDisplay]." DescriptionLocId="AI.LaunchCondition.NoNT" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="((VersionNT &lt;&gt; 501) AND (VersionNT &lt;&gt; 502))" Description="[ProductName] cannot be installed on [WindowsTypeNT5XDisplay]." DescriptionLocId="AI.LaunchCondition.NoNT5X" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="(VersionNT &lt;&gt; 400)" Description="[ProductName] cannot be installed on [WindowsTypeNT40Display]." DescriptionLocId="AI.LaunchCondition.NoNT40" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="(VersionNT &lt;&gt; 500)" Description="[ProductName] cannot be installed on [WindowsTypeNT50Display]." DescriptionLocId="AI.LaunchCondition.NoNT50" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="(VersionNT &lt;&gt; 600)" Description="[ProductName] cannot be installed on [WindowsTypeNT60Display]." DescriptionLocId="AI.LaunchCondition.NoNT60" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="AI_DETECTED_COLOR_QUALITY &gt;= AI_REQUIRED_COLOR_QUALITY" Description="[ProductName] cannot be installed on systems with color quality lower than [AI_REQUIRED_COLOR_QUALITY] bits." DescriptionLocId="AI.LaunchCondition.ColorDepth" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="AI_DETECTED_PHYSICAL_MEMORY &gt;= AI_REQUIRED_PHYSICAL_MEMORY" Description="[ProductName] cannot be installed on systems with less physical memory than [AI_REQUIRED_PHYSICAL_MEMORY] MB." DescriptionLocId="AI.LaunchCondition.RAM" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="NOT AI_DETECTED_VIRTUAL_MACHINE" Description="[ProductName] cannot be installed on systems running on virtual machines." DescriptionLocId="AI.LaunchCondition.VM" IsPredefined="true" Builds="DefaultBuild"/>
+    <ROW Condition="VersionNT" Description="[ProductName] cannot be installed on [WindowsType9XDisplay]." DescriptionLocId="AI.LaunchCondition.No9X" IsPredefined="true" Builds="DefaultBuild"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiRegsComponent">
+    <ROW Registry="Manufacturer" Root="-1" Key="Software\[Manufacturer]" Name="\"/>
+    <ROW Registry="Path" Root="-1" Key="Software\[Manufacturer]\[ProductName]" Name="Path" Value="[APPDIR]" Component_="ProductInformation"/>
+    <ROW Registry="ProductName" Root="-1" Key="Software\[Manufacturer]\[ProductName]" Name="\"/>
+    <ROW Registry="Software" Root="-1" Key="Software" Name="\"/>
+    <ROW Registry="Version" Root="-1" Key="Software\[Manufacturer]\[ProductName]" Name="Version" Value="[ProductVersion]" Component_="ProductInformation"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiShortsComponent">
+    <ROW Shortcut="BookFlow.App" Directory_="DesktopFolder" Name="BookFlow.App" Component_="BookFlow.App.exe" Target="[#BookFlow.App.exe]" Hotkey="0" Icon_="icon.exe" IconIndex="0" ShowCmd="1" WkDir="APPDIR"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiThemeComponent">
+    <ATTRIBUTE name="UsedTheme" value="classic"/>
+  </COMPONENT>
+  <COMPONENT cid="caphyon.advinst.msicomp.MsiUpgradeComponent">
+    <ROW UpgradeCode="[|UpgradeCode]" VersionMin="0.0.1" VersionMax="[|ProductVersion]" Attributes="257" ActionProperty="OLDPRODUCTS"/>
+    <ROW UpgradeCode="[|UpgradeCode]" VersionMin="[|ProductVersion]" Attributes="2" ActionProperty="AI_NEWERPRODUCTFOUND"/>
+  </COMPONENT>
+</DOCUMENT>

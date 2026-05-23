@@ -59,9 +59,21 @@ for %%A in (BookFlow.Shared.dll BookFlow.Shared.pdb) do (
   )
 )
 
+rem Runtime dependencies NT8 does not ship. These land in the NT8 build output via NuGet.
+rem System.ServiceModel.Primitives is the net48 facade that forwards WCF contract
+rem attributes ([ServiceContract]/[DataContract]) to the in-box framework WCF assemblies.
+for %%A in (System.ServiceModel.Primitives.dll) do (
+  if exist "%NT8_OUT%\%%A" (
+    echo   Copy %%A (runtime dependency)
+    copy /Y "%NT8_OUT%\%%A" "%TARGET_DIR%\" >nul || (echo     FAILED copying %%A & exit /b 1)
+  ) else (
+    echo   WARNING: %%A not found in NT8 output - WCF contracts may fail to load.
+  )
+)
+
 echo.
 echo Verifying deployed files...
-for %%A in (NT8DataEngine.dll BookFlow.Shared.dll) do (
+for %%A in (NT8DataEngine.dll BookFlow.Shared.dll System.ServiceModel.Primitives.dll) do (
   if not exist "%TARGET_DIR%\%%A" (
     echo   MISSING: %%A (deployment incomplete)
     set DEPLOY_ERROR=1

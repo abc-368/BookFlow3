@@ -47,6 +47,14 @@ namespace BookFlow.App.Interfaces
         /// This is dynamically determined from the first received trade price.
         /// </summary>
         int PriceDecimalPlaces { get; }
+
+        /// <summary>
+        /// Instrument point (multiplier) value from NT8 instrument metadata. Used for PnL math.
+        /// </summary>
+        decimal PointValue { get; }
+
+        /// <summary>Instrument tick size from NT8 instrument metadata.</summary>
+        decimal TickSize { get; }
         
         /// <summary>
         /// Clears all DOM data structures including order books, price levels, and market data.

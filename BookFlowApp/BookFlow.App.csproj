@@ -1,5 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
@@ -7,16 +6,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\SharedLibrary.Standard\BookFlow.Shared.csproj" />
   </ItemGroup>
-
+  <ItemGroup>
+    <InternalsVisibleTo Include="BookFlow.Tests" />
+  </ItemGroup>
   <!-- DevExpress packages for professional DOM grid -->
   <ItemGroup>
     <PackageReference Include="DevExpress.Wpf.Grid" Version="25.1.3" />
     <PackageReference Include="DevExpress.Wpf.Themes.Office2019Colorful" Version="25.1.3" />
     <PackageReference Include="System.Reactive" Version="6.0.1" />
+    <!-- WCF client over net.pipe for the BookFlow control + event channel. Server is hosted in NT8 (net48). -->
+    <PackageReference Include="System.ServiceModel.NetNamedPipe" Version="6.0.0" />
   </ItemGroup>
-
 </Project>

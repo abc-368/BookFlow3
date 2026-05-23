@@ -122,3 +122,187 @@ The system employs two distinct IPC mechanisms, each suited for a different purp
     *   **Bi-directional**: Allows for request/response patterns.
     *   **Flexible**: The use of a simple JSON-like text protocol allows for more complex and variable-sized messages compared to the fixed-size structs in the ring buffer.
     *   **Global Channels**: The system uses a global control pipe (`BookFlow_Control_Global`) and a global event pipe (`BookFlow_Event_Global`).
+
+---
+
+# Implementation Plan: Streaming & IPC Enhancements
+
+This plan outlines critical improvements to the NinjaTrader 8 data streaming and IPC layer. It resolves concurrency bugs, eliminates resource/thread leaks, and optimizes communication channels.
+
+## 1. Goal Description
+The current implementation of the BookFlow data streaming engine contains critical thread-safety bugs on the shared memory ring buffer, memory leaks in NinjaTrader on assembly reload due to missing lifecycle management, and performance bottlenecks in the event reporting system due to loopback TCP and JSON serialization.
+
+This change aims to:
+1. Guarantee thread-safe multi-producer streaming of Level 1 and Level 2 market data.
+2. Clean up all threads, event subscriptions, and unmanaged resources during AddOn shutdown to prevent memory leaks and handle reload cycles gracefully.
+3. Migrate the order and position update channel from a TCP loopback socket using text-based JSON to a duplex Named Pipe or binary Event buffer.
+
+---
+
+## 2. Critical User/Agent Review Required
+
+> [!WARNING]
+> **Thread-Safety on Memory-Mapped Accessors**
+> .NET Standard `MemoryMappedViewAccessor` does not support direct atomic operations (like `Interlocked`) on its fields. 
+> To guarantee thread-safe writes from multiple indicators:
+> * **Option A (Recommended)**: Use a lightweight `lock` on a shared object (e.g., in `BookFlowAddOn.WriteToGlobalChannel`) before calling `TryWrite`. Since writing a binary struct to a memory view is an in-memory copy of 80 bytes (sub-microsecond execution time), lock contention is mathematically negligible.
+> * **Option B**: Use `unsafe` blocks to acquire pointers to unmanaged memory and execute `Interlocked.CompareExchange` on the raw memory address.
+> We recommend **Option A** for simplicity, readability, and platform independence, with minimal performance overhead.
+
+---
+
+## 3. Proposed Changes
+
+### Shared Library Component (`SharedLibrary.Standard`)
+
+#### [MODIFY] [SharedRingBuffer.cs](file:///c:/Users/master/source/repos/BookFlow5/SharedLibrary.Standard/IPC/SharedRingBuffer.cs)
+* Add a `lock` mechanism or atomic memory pointer adjustments on `TryWrite` to prevent concurrent write pointers from clobbering each other.
+* Correct the memory barrier sequence on `TryRead` to ensure data structure bytes are fully read *before* the tail pointer is advanced and exposed to the writer.
+
+---
+
+### NinjaTrader 8 Data Engine Component (`BookFlow.NT8DataEngine`)
+
+#### [MODIFY] [BookFlowAddOn.cs](file:///c:/Users/master/source/repos/BookFlow5/NT8DataEngine/NinjaTrader/BookFlowAddOn.cs)
+* Implement `OnStateChange` to detect indicator/AddOn shutdown (`State.Terminated`).
+* Add a thorough `Dispose` method to:
+  * Unsubscribe from all `Account.OrderUpdate`, `Account.ExecutionUpdate`, and `Account.PositionUpdate` events.
+  * Stop background threads (`_eventWriterThread`, `_eventServerThread`) cleanly using volatile flags and signals.
+  * Dispose the Named Pipe control server and Shared Memory buffers.
+* Eliminate the loopback TCP socket server and replace it with a dedicated Event Named Pipe (`BookFlow_Event_Global`) or push events directly via the duplex Control Pipe.
+
+#### [MODIFY] [BookFlowIndi.cs](file:///c:/Users/master/source/repos/BookFlow5/NT8DataEngine/NinjaTrader/BookFlowIndi.cs)
+* Improve telemetry/logging outputs. Ensure exception messages are tracked.
+
+---
+
+### Client Component (`BookFlow.App`)
+
+#### [MODIFY] [NT8DirectDataFeed.cs](file:///c:/Users/master/source/repos/BookFlow5/BookFlowApp/Services/NT8DirectDataFeed.cs)
+* Modify connection logic to bind to the new event Named Pipe instead of the TCP loopback port `38755`.
+* Ensure clean client shutdown is performed on disconnect.
+
+---
+
+## 4. Detailed Code Sketches & Rationale
+
+### A. SharedRingBuffer Concurrency Guard
+Since multiple indicator instances write to the singleton AddOn channel concurrently, we must guard the write-side pointer increment.
+
+```csharp
+// Inside SharedRingBuffer.cs
+private readonly object _writeLock = new object();
+
+public bool TryWrite(ref UnifiedMarketDataMessage message)
+{
+    lock (_writeLock)
+    {
+        long head = _accessor.ReadInt64(HeadPosition);
+        long tail = _accessor.ReadInt64(TailPosition);
+        long nextHead = (head + 1) % _capacity;
+        
+        if (nextHead == tail) return false; // Buffer full
+        
+        long position = _bufferOffset + head * _messageSize;
+        _accessor.Write(position, ref message);
+        
+        Thread.MemoryBarrier(); // Fence the message write
+        _accessor.Write(HeadPosition, nextHead); // Publish new head
+        return true;
+    }
+}
+```
+
+For the read path:
+```csharp
+public bool TryRead(out UnifiedMarketDataMessage message)
+{
+    long head = _accessor.ReadInt64(HeadPosition);
+    long tail = _accessor.ReadInt64(TailPosition);
+    
+    if (head == tail)
+    {
+        message = default;
+        return false;
+    }
+    
+    long position = _bufferOffset + tail * _messageSize;
+    _accessor.Read(position, out message);
+    
+    long nextTail = (tail + 1) % _capacity;
+    
+    Thread.MemoryBarrier(); // Guarantee message bytes are copied out BEFORE advancing tail
+    _accessor.Write(TailPosition, nextTail);
+    return true;
+}
+```
+
+### B. AddOn Lifecycle and Cleanup
+Add lifecycle handlers in `BookFlowAddOn.cs` to prevent resource leaks during NT8 recompile/reload.
+
+```csharp
+// Inside BookFlowAddOn.cs
+
+protected override void OnStateChange()
+{
+    if (State == State.SetDefaults)
+    {
+        Description = "BookFlow AddOn for order management and events";
+        Name = "BookFlowAddOn";
+    }
+    else if (State == State.Terminated)
+    {
+        Dispose();
+    }
+}
+
+public void Dispose()
+{
+    LogMsg("Disposing BookFlow AddOn...");
+    
+    // 1. Unsubscribe from NT8 events to avoid leaking callbacks
+    UnsubscribeFromAccountEvents();
+    
+    // 2. Shut down thread loops
+    _eventServerRunning = false;
+    _eventSignal.Set(); // Wake writer loop to exit
+    
+    // 3. Close pipes and sockets
+    try { _controlPipeServer?.Dispose(); } catch {}
+    try { _globalDataChannel?.Dispose(); } catch {}
+    try { CloseEventClient(); } catch {}
+    try { _eventListener?.Stop(); } catch {}
+    
+    // 4. Null instance
+    _instance = null;
+}
+
+private void UnsubscribeFromAccountEvents()
+{
+    foreach (var account in Account.All)
+    {
+        if (account.Name == "Backtest") continue;
+        account.OrderUpdate -= OnOrderUpdate;
+        account.ExecutionUpdate -= OnExecutionUpdate;
+        account.PositionUpdate -= OnPositionUpdate;
+    }
+}
+```
+
+---
+
+## 5. Verification Plan
+
+### Automated Verification
+* Write an integration unit test in a temporary project/script that spins up 5 concurrent threads executing `TryWrite` on a `SharedRingBuffer`.
+* Verify that:
+  1. No pointer corruption occurs.
+  2. The read side consumes exactly the same number of messages written without any sequence gaps.
+  3. Writing to a full buffer returns `false` safely.
+
+### Manual Verification in NinjaTrader 8
+1. Compile the modified `NT8DataEngine` and copy assemblies to `Documents/NinjaTrader 8/bin/Custom`.
+2. Open NinjaTrader 8, apply `BookFlowIndi` to multiple charts (e.g. ES and NQ) to trigger concurrent writes.
+3. Open the WPF Client App and connect. Monitor incoming L1/L2 data for both symbols.
+4. Verify sequence continuity in the client log to ensure zero dropped messages.
+5. Compile scripts inside NinjaTrader (F5) multiple times and verify that the output window shows clean teardown of channels and no socket binding errors (`Address already in use`).

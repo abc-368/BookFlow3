@@ -10,9 +10,14 @@ using BookFlow.Shared.IPC;
 
 namespace BookFlow.App.Services
 {
+    /// <summary>
+    /// Market data feed + control plane bridge. High-frequency L1/L2 still flows over
+    /// the shared-memory ring (fastest path). Control operations (orders, portfolio,
+    /// ticker dictionary) now go over the WCF service via <see cref="BookFlowServiceClient"/>.
+    /// </summary>
     public class NT8DirectDataFeed : IDataFeed, IDisposable
     {
-        private readonly ControlPipeClient _controlClient;
+        private readonly BookFlowServiceClient _serviceClient;
         private readonly Subject<UnifiedMarketDataMessage> _marketDataSubject = new();
         private readonly Subject<OrderStatusMessage> _orderStatusSubject = new();
         private readonly Subject<PortfolioStateMessage> _portfolioSubject = new();
@@ -32,7 +37,7 @@ namespace BookFlow.App.Services
 
         public NT8DirectDataFeed()
         {
-            _controlClient = new ControlPipeClient("BookFlow_Control_Global");
+            _serviceClient = new BookFlowServiceClient("NT8DirectDataFeed");
         }
 
         public async Task<bool> ConnectAsync()
@@ -40,13 +45,14 @@ namespace BookFlow.App.Services
             if (_disposed) return false;
             if (_connected) return true;
 
-            // Connect control channel (orders/requests)
-            await _controlClient.ConnectAsync();
+            // Connect the WCF control channel.
+            if (!await _serviceClient.ConnectAsync())
+                return false;
             _connected = true;
             ConnectionStatusChanged?.Invoke(this, true);
 
-            // Start market data reader on the global shared ring buffer
-            // NOTE: Capacity must match NT8 side (BookFlowAddOn uses 1024*1024)
+            // Start market data reader on the global shared ring buffer.
+            // NOTE: Capacity must match NT8 side (BookFlowAddOn uses 1024*1024).
             _dataChannel = new SharedRingBuffer("BookFlow_Data_Global", 1024 * 1024);
             _readerCts = new CancellationTokenSource();
             _readerTask = Task.Run(() => ReaderLoop(_readerCts.Token));
@@ -59,11 +65,9 @@ namespace BookFlow.App.Services
             {
                 while (!ct.IsCancellationRequested && !_disposed)
                 {
-                    // Wait until NT8 signals data is available
                     _dataChannel?.WaitForData();
                     if (ct.IsCancellationRequested || _disposed) break;
 
-                    // Drain all available messages
                     UnifiedMarketDataMessage msg;
                     int safety = 0;
                     while (_dataChannel != null && _dataChannel.TryRead(out msg))
@@ -73,14 +77,8 @@ namespace BookFlow.App.Services
                     }
                 }
             }
-            catch (ObjectDisposedException)
-            {
-                // shutting down
-            }
-            catch (Exception)
-            {
-                // Swallow unexpected reader errors to avoid tearing down the app; user will see no data
-            }
+            catch (ObjectDisposedException) { /* shutting down */ }
+            catch (Exception) { /* swallow to keep app alive; user sees no data */ }
         }
 
         public async Task DisconnectAsync()
@@ -89,7 +87,6 @@ namespace BookFlow.App.Services
             _connected = false;
             ConnectionStatusChanged?.Invoke(this, false);
 
-            // Stop reader
             try { _readerCts?.Cancel(); } catch { }
             try { if (_readerTask != null) await _readerTask; } catch { }
             _readerTask = null;
@@ -98,36 +95,49 @@ namespace BookFlow.App.Services
 
             _dataChannel?.Dispose();
             _dataChannel = null;
+
+            _serviceClient.Disconnect();
         }
 
         public async Task<OrderStatusMessage> SubmitOrderAsync(string instrumentName, OrderCommand orderCommand)
         {
             if (!_connected) throw new InvalidOperationException("Not connected");
-            var resp = await _controlClient.SubmitOrderAsync(instrumentName, orderCommand);
-            return resp ?? new OrderStatusMessage { ClientOrderId = orderCommand.ClientOrderId, Status = OrderCommand.OrderStatus.Rejected, Message = "No response", Timestamp = DateTime.UtcNow };
+            switch (orderCommand.Action)
+            {
+                case OrderCommand.OrderAction.CancelAll:
+                    return WcfContractMapper.FromOperationResult(
+                        await _serviceClient.CancelAllOrdersAsync(string.Empty), orderCommand.ClientOrderId, OrderCommand.OrderStatus.Cancelled);
+                case OrderCommand.OrderAction.CancelAtPrice:
+                    return WcfContractMapper.FromOperationResult(
+                        await _serviceClient.CancelAtPriceAsync(string.Empty, instrumentName, orderCommand.LimitPrice), orderCommand.ClientOrderId, OrderCommand.OrderStatus.Cancelled);
+                case OrderCommand.OrderAction.Flat:
+                    return WcfContractMapper.FromOperationResult(
+                        await _serviceClient.FlattenPositionAsync(string.Empty, instrumentName), orderCommand.ClientOrderId, OrderCommand.OrderStatus.Submitted);
+                default:
+                    return WcfContractMapper.FromAck(
+                        await _serviceClient.SubmitOrderAsync(WcfContractMapper.ToOrderRequest(instrumentName, orderCommand)));
+            }
         }
 
         public async Task<PortfolioStateMessage> RequestPortfolioStateAsync()
         {
             if (!_connected) throw new InvalidOperationException("Not connected");
-            var resp = await _controlClient.RequestPortfolioStateAsync();
-            return resp ?? new PortfolioStateMessage { Timestamp = DateTime.UtcNow };
+            var snap = await _serviceClient.RequestPortfolioStateAsync();
+            return WcfContractMapper.ToPortfolioStateMessage(snap);
         }
 
         public async Task<List<TickerInfo>> GetAvailableInstrumentsAsync()
         {
             if (!_connected) throw new InvalidOperationException("Not connected");
-            var resp = await _controlClient.GetTickerDictionaryAsync();
-            var list = new List<TickerInfo>();
-            if (resp?.TickerDictionary != null)
-            {
-                foreach (var kv in resp.TickerDictionary)
-                {
-                    var info = TickerInfo.Parse(kv.Key, kv.Value);
-                    if (info != null) list.Add(info);
-                }
-            }
-            return list;
+            var snap = await _serviceClient.GetTickerSnapshotAsync();
+            return WcfContractMapper.ToTickerInfoList(snap);
+        }
+
+        public async Task<BookFlow.Shared.Service.DomSnapshotResponse?> RequestDomSnapshotAsync(byte tickerId)
+        {
+            if (!_connected) return null;
+            try { return await _serviceClient.RequestDomSnapshotAsync(tickerId); }
+            catch { return null; }
         }
 
         public void Dispose()
@@ -140,7 +150,7 @@ namespace BookFlow.App.Services
             _marketDataSubject.OnCompleted();
             _orderStatusSubject.OnCompleted();
             _portfolioSubject.OnCompleted();
-            _controlClient.Dispose();
+            _serviceClient.Dispose();
         }
     }
 }

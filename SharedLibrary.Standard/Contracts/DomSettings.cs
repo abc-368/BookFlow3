@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Collections.ObjectModel;
+using System.Collections.Generic;
 
 namespace BookFlow.Shared.Contracts
 {
@@ -45,6 +47,15 @@ namespace BookFlow.Shared.Contracts
         private string _askBackgroundColor = "#FFC62828";
         private string _normalBackgroundColor = "#FF1A252F";
 
+        // Per-column configuration collection
+        private ObservableCollection<ColumnConfig> _columns = new ObservableCollection<ColumnConfig>();
+        private readonly Dictionary<string, ColumnConfig> _columnsByKey = new Dictionary<string, ColumnConfig>();
+
+        public DomSettings()
+        {
+            ResetToDefaults();
+        }
+
         #region Properties
         public int MaxVisibleRows { get => _maxVisibleRows; set { if (_maxVisibleRows != value && value > 0 && value <= 5000) { _maxVisibleRows = value; OnPropertyChanged(); } } }
         public int CenterPriceOffset { get => _centerPriceOffset; set { if (_centerPriceOffset != value && value > 0 && value <= _maxVisibleRows / 2) { _centerPriceOffset = value; OnPropertyChanged(); } } }
@@ -70,6 +81,9 @@ namespace BookFlow.Shared.Contracts
         public string BidBackgroundColor { get => _bidBackgroundColor; set { if (_bidBackgroundColor != value && !string.IsNullOrEmpty(value)) { _bidBackgroundColor = value; OnPropertyChanged(); } } }
         public string AskBackgroundColor { get => _askBackgroundColor; set { if (_askBackgroundColor != value && !string.IsNullOrEmpty(value)) { _askBackgroundColor = value; OnPropertyChanged(); } } }
         public string NormalBackgroundColor { get => _normalBackgroundColor; set { if (_normalBackgroundColor != value && !string.IsNullOrEmpty(value)) { _normalBackgroundColor = value; OnPropertyChanged(); } } }
+
+        public ObservableCollection<ColumnConfig> Columns { get => _columns; set { if (_columns != value) { _columns = value; OnPropertyChanged(); RebuildColumnsByKey(); } } }
+        public Dictionary<string, ColumnConfig> ColumnsByKey => _columnsByKey;
         #endregion
 
         public void ResetToDefaults()
@@ -98,6 +112,38 @@ namespace BookFlow.Shared.Contracts
             BidBackgroundColor = "#FF2E7D32";
             AskBackgroundColor = "#FFC62828";
             NormalBackgroundColor = "#FF1A252F";
+
+            Columns = new ObservableCollection<ColumnConfig>
+            {
+                new ColumnConfig { Key = "Observations", DisplayName = "Obs", Width = 30, FontSize = 8 },
+                new ColumnConfig { Key = "BidOrders", DisplayName = "Bid Ord", Width = 35, FontSize = 8 },
+                new ColumnConfig { Key = "AskOrders", DisplayName = "Ask Ord", Width = 35, FontSize = 8 },
+                new ColumnConfig { Key = "OpenPositionPnL", DisplayName = "P&L", Width = 45, FontSize = 8 },
+                new ColumnConfig { Key = "VolumeProfile", DisplayName = "Vol Prof", Width = 50, FontSize = 8 },
+                new ColumnConfig { Key = "Price", DisplayName = "Price", Width = 70, FontSize = 9, IsBold = true },
+                new ColumnConfig { Key = "BidSnapshot", DisplayName = "Bid Snap", Width = 50, FontSize = 8 },
+                new ColumnConfig { Key = "BidDepth", DisplayName = "Bid Dep", Width = 50, FontSize = 8 },
+                new ColumnConfig { Key = "LastTradeAtBid", DisplayName = "LTB", Width = 40, FontSize = 8 },
+                new ColumnConfig { Key = "LastTradeAtAsk", DisplayName = "LTA", Width = 40, FontSize = 8 },
+                new ColumnConfig { Key = "AskDepth", DisplayName = "Ask Dep", Width = 50, FontSize = 8 },
+                new ColumnConfig { Key = "AskSnapshot", DisplayName = "Ask Snap", Width = 50, FontSize = 8 },
+                new ColumnConfig { Key = "AskProfile", DisplayName = "Ask Prof", Width = 45, FontSize = 8 },
+                new ColumnConfig { Key = "BidProfile", DisplayName = "Bid Prof", Width = 45, FontSize = 8 },
+                new ColumnConfig { Key = "Reserve", DisplayName = "Rsrv", Width = 30, FontSize = 8 }
+            };
+
+            RebuildColumnsByKey();
+        }
+
+        private void RebuildColumnsByKey()
+        {
+            _columnsByKey.Clear();
+            foreach (var c in _columns)
+            {
+                if (!string.IsNullOrEmpty(c.Key))
+                    _columnsByKey[c.Key] = c;
+            }
+            OnPropertyChanged(nameof(ColumnsByKey));
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

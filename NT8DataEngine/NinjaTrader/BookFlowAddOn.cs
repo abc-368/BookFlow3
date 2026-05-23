@@ -2,156 +2,267 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Security.Principal;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using BookFlow.Shared.Contracts;
 using BookFlow.Shared.IPC;
+using BookFlow.Shared.Service;
+using BookFlow.NT8DataEngine.Service;
 using NinjaTrader.Cbi;
 using NinjaTrader.NinjaScript;
 
 namespace NinjaTrader.NinjaScript.AddOns
 {
-    public class BookFlowAddOn : AddOnBase
+    public class BookFlowAddOn : AddOnBase, IDisposable
     {
         private static BookFlowAddOn _instance;
         private static readonly object _instanceLock = new object();
 
-        private ControlPipeServer _controlPipeServer;
         private SharedRingBuffer _globalDataChannel;
-
-        private TcpListener _eventListener;
-        private TcpClient _eventClient;
-        private Thread _eventServerThread;
-        private volatile bool _eventServerRunning = false;
-        private DateTime _lastEventActivity = DateTime.MinValue;
-        private const int EVENT_PORT = 38755;
 
         private readonly Dictionary<string, Order> _clientOrderMap = new Dictionary<string, Order>();
         private readonly object _orderLock = new object();
 
         private readonly Dictionary<string, byte> _instrumentToTickerId = new Dictionary<string, byte>();
         private readonly Dictionary<byte, string> _tickerIdToInfo = new Dictionary<byte, string>();
-        private byte _nextTickerId = 1;
+        private readonly Stack<byte> _availableTickerIds = new Stack<byte>();
+        private int _nextTickerIdInt = 1; // widened to int to detect byte overflow before assignment
         private readonly object _tickerLock = new object();
 
         private readonly string _logPrefix = "[BookFlowAddOn]";
 
-        private readonly ConcurrentQueue<string> _eventQueue = new ConcurrentQueue<string>();
-        private readonly AutoResetEvent _eventSignal = new AutoResetEvent(false);
-        private Thread _eventWriterThread;
+        private CancellationTokenSource _shutdownCts;
+        private volatile bool _initialized;
+        private volatile bool _disposed;
 
+        // WCF duplex service: the single control + event channel for all clients.
+        private BookFlowServiceHost _wcfHost;
+        private long _dataMessagesSent;
+        private long _dataMessagesDropped;
+
+        // Increment 3: coalesce multi-producer market-data writes onto a single drain
+        // thread so the MMF ring has exactly one writer (true SPSC). Multiple indicator
+        // threads enqueue to the lock-free ConcurrentQueue; the drain thread is the sole
+        // ring writer. Bounded with drop-oldest to bound memory under a slow/absent reader.
+        private const int MaxPendingWrites = 65536;
+        private readonly ConcurrentQueue<UnifiedMarketDataMessage> _pendingWrites = new ConcurrentQueue<UnifiedMarketDataMessage>();
+        private readonly AutoResetEvent _writeSignal = new AutoResetEvent(false);
+        private Thread _ringWriterThread;
+        private volatile bool _ringWriterRunning;
+        private int _pendingCount;
+
+        // Q4: authoritative server-side L2 book + monotonic global sequence stamped into the
+        // ring (Reserved1). Both are touched only by the single drain thread.
+        private readonly ServerBookRegistry _serverBooks = new ServerBookRegistry();
+        private long _globalDataSequence;
+
+        // Event fan-out state (Increment 2b-1).
+        private long _portfolioVersion;
+        private long _heartbeatSeq;
+        // Serializes version assignment + broadcast so clients see versions in order
+        // even when NT8 raises events from different threads (Increment 4).
+        private readonly object _publishLock = new object();
+        private System.Threading.Timer _heartbeatTimer;
+        private readonly Dictionary<string, string> _ntOrderIdToClientId = new Dictionary<string, string>();
+        private readonly HashSet<Account> _subscribedAccounts = new HashSet<Account>();
+        private readonly Dictionary<string, DateTime> _lastAccountBroadcastUtc = new Dictionary<string, DateTime>();
+        private readonly object _accountLock = new object();
+
+        /// <summary>
+        /// Returns the singleton, lazily initializing it on first indicator drop.
+        /// NT8 also instantiates this AddOn at startup (registered via OnStateChange.SetDefaults);
+        /// the lazy path is a fallback for environments where that hasn't fired yet.
+        /// </summary>
         public static BookFlowAddOn Instance
         {
             get
             {
-                if (_instance == null)
+                BookFlowAddOn instance;
+                lock (_instanceLock)
                 {
-                    lock (_instanceLock)
-                    {
-                        if (_instance == null)
-                        {
-                            _instance = new BookFlowAddOn();
-                            _instance.InitializeAddOn();
-                        }
-                    }
+                    if (_instance == null) _instance = new BookFlowAddOn();
+                    instance = _instance;
                 }
-                return _instance;
+                instance.EnsureInitialized();
+                return instance;
             }
         }
 
-        private void InitializeAddOn()
+        /// <summary>
+        /// Returns the existing singleton without lazy initialization. Used by indicator
+        /// teardown to avoid resurrecting a disposed AddOn while shutting down.
+        /// </summary>
+        public static BookFlowAddOn TryGetExistingInstance()
         {
-            try
+            lock (_instanceLock) return _instance;
+        }
+
+        protected override void OnStateChange()
+        {
+            if (State == State.SetDefaults)
             {
-                LogMsg("Starting BookFlow AddOn...");
-                StartGlobalChannels();
-                SubscribeToAccountEvents();
-                LogMsg("BookFlow AddOn ready.");
+                Description = "BookFlow AddOn for order management, market data fan-out, and event broadcasting.";
+                Name = "BookFlowAddOn";
+                lock (_instanceLock) { if (_instance == null) _instance = this; }
             }
-            catch (Exception ex)
+            else if (State == State.Terminated)
             {
-                LogMsg(string.Format("ADDON INITIALIZATION ERROR: {0}", ex.Message));
+                // Only the active singleton handles teardown.
+                BookFlowAddOn active;
+                lock (_instanceLock) active = _instance;
+                if (ReferenceEquals(active, this)) Shutdown();
             }
         }
+
+        private void EnsureInitialized()
+        {
+            if (_initialized || _disposed) return;
+            lock (_instanceLock)
+            {
+                if (_initialized || _disposed) return;
+                try
+                {
+                    LogMsg("Initializing BookFlow AddOn (indicator-triggered)...");
+                    _shutdownCts = new CancellationTokenSource();
+                    StartGlobalChannels();
+                    StartWcfService();
+                    SubscribeToAccountEvents();
+                    _heartbeatTimer = new System.Threading.Timer(OnHeartbeatTick, null, 1000, 1000);
+                    _initialized = true;
+                    LogMsg("BookFlow AddOn ready.");
+                }
+                catch (Exception ex)
+                {
+                    LogMsg(string.Format("ADDON INITIALIZATION ERROR: {0}", ex.Message));
+                }
+            }
+        }
+
+        private void Shutdown()
+        {
+            if (_disposed) return;
+            lock (_instanceLock)
+            {
+                if (_disposed) return;
+                _disposed = true;
+            }
+
+            LogMsg("Shutting down BookFlow AddOn...");
+
+            // 1. Signal cancellation to all loops.
+            try { _shutdownCts?.Cancel(); } catch { }
+
+            // 2. Unsubscribe from NT8 account events so no callbacks fire into disposed state.
+            try { UnsubscribeFromAccountEvents(); } catch (Exception ex) { LogMsg("Account-unsubscribe error: " + ex.Message); }
+
+            // 3. Stop the heartbeat loop and the ring drain thread.
+            try { _heartbeatTimer?.Dispose(); } catch { }
+            _ringWriterRunning = false;
+            try { _writeSignal.Set(); } catch { }                 // wake the drain loop to exit
+            try { _ringWriterThread?.Join(TimeSpan.FromSeconds(2)); } catch { }
+
+            // 4. Dispose IPC channels.
+            try { _wcfHost?.Dispose(); } catch (Exception ex) { LogMsg("WcfHost-dispose error: " + ex.Message); }
+            try { _globalDataChannel?.Dispose(); } catch (Exception ex) { LogMsg("DataChannel-dispose error: " + ex.Message); }
+            try { _writeSignal.Dispose(); } catch { }
+            try { _shutdownCts?.Dispose(); } catch { }
+
+            // 5. Clear maps so a subsequent re-init (NT8 recompile + reload) starts clean.
+            lock (_orderLock) { _clientOrderMap.Clear(); _ntOrderIdToClientId.Clear(); }
+            lock (_accountLock) { _lastAccountBroadcastUtc.Clear(); }
+            lock (_tickerLock)
+            {
+                _instrumentToTickerId.Clear();
+                _tickerIdToInfo.Clear();
+                _availableTickerIds.Clear();
+                _nextTickerIdInt = 1;
+            }
+            try { _serverBooks.Clear(); } catch { }
+
+            // Release the singleton slot so re-init creates a fresh instance.
+            lock (_instanceLock) { if (ReferenceEquals(_instance, this)) _instance = null; }
+
+            LogMsg("BookFlow AddOn shutdown complete.");
+        }
+
+        void IDisposable.Dispose() => Shutdown();
 
         private void StartGlobalChannels()
         {
-            ControlPipeServer.Logger = delegate(string s) { LogMsg(s); };
-
-            var controlChannelName = "BookFlow_Control_Global";
-            _controlPipeServer = new ControlPipeServer(controlChannelName);
-            _controlPipeServer.MessageReceived += OnControlMessageReceived;
-            _controlPipeServer.ClientDisconnected += OnControlPipeClientDisconnected;
-
             var dataChannelName = "BookFlow_Data_Global";
             _globalDataChannel = new SharedRingBuffer(dataChannelName, 1024 * 1024);
 
-            _eventServerRunning = true;
-            _eventWriterThread = new Thread(EventWriterLoop) { IsBackground = true, Name = "EventWriterThread" };
-            _eventWriterThread.Start();
-            _eventServerThread = new Thread(delegate() { RunEventTcpServer(); }) { IsBackground = true, Name = "EventServerThread" };
-            _eventServerThread.Start();
+            _ringWriterRunning = true;
+            _ringWriterThread = new Thread(RingWriterLoop) { IsBackground = true, Name = "BookFlowRingWriter" };
+            _ringWriterThread.Start();
         }
 
-        private void EventWriterLoop()
+        /// <summary>
+        /// Called from any NT8 indicator thread. Enqueues onto the lock-free coalescing
+        /// queue; the single drain thread performs the actual ring write. Drop-oldest
+        /// when the queue is saturated (slow/absent consumer) to bound memory.
+        /// </summary>
+        public void WriteToGlobalChannel(byte tickerId, UnifiedMarketDataMessage data)
         {
-            while (_eventServerRunning)
+            if (_disposed) return;
+
+            // Drop oldest while saturated. Multiple producers may race here; each drop
+            // is counted and the queue stays near the cap.
+            while (Volatile.Read(ref _pendingCount) >= MaxPendingWrites)
+            {
+                if (_pendingWrites.TryDequeue(out _))
+                {
+                    Interlocked.Decrement(ref _pendingCount);
+                    Interlocked.Increment(ref _dataMessagesDropped);
+                }
+                else break;
+            }
+
+            _pendingWrites.Enqueue(data);
+            Interlocked.Increment(ref _pendingCount);
+            _writeSignal.Set();
+        }
+
+        // Sole writer to the MMF ring -> the ring is single-producer/single-consumer.
+        private void RingWriterLoop()
+        {
+            while (_ringWriterRunning)
             {
                 try
                 {
-                    _eventSignal.WaitOne(1000);
-                    string json;
-                    while (_eventQueue.TryDequeue(out json))
+                    _writeSignal.WaitOne(1000);
+                    if (!_ringWriterRunning) break;
+
+                    var channel = _globalDataChannel;
+                    if (channel == null) continue;
+
+                    UnifiedMarketDataMessage msg;
+                    while (_pendingWrites.TryDequeue(out msg))
                     {
-                        try
+                        Interlocked.Decrement(ref _pendingCount);
+                        // Stamp a global monotonic sequence into the ring (Reserved1) and apply
+                        // the message to the authoritative server book BEFORE publishing, so a
+                        // concurrent snapshot is never newer than what the client can see.
+                        var seq = ++_globalDataSequence;
+                        msg.Reserved1 = seq;
+                        msg.IpcQueueTime = Stopwatch.GetTimestamp();
+                        _serverBooks.Apply(ref msg, seq);
+                        if (channel.TryWrite(ref msg))
                         {
-                            var client = _eventClient;
-                            if (client == null || !client.Connected) continue;
-
-                            var contentBytes = Encoding.UTF8.GetBytes(json);
-                            var lengthBytes = BitConverter.GetBytes(contentBytes.Length);
-                            var buffer = new byte[4 + contentBytes.Length];
-                            lengthBytes.CopyTo(buffer, 0);
-                            contentBytes.CopyTo(buffer, 4);
-
-                            var stream = client.GetStream();
-                            stream.Write(buffer, 0, buffer.Length);
-                            stream.Flush();
-                            _lastEventActivity = DateTime.UtcNow;
+                            Interlocked.Increment(ref _dataMessagesSent);
+                            channel.SignalDataAvailable();
                         }
-                        catch (IOException) { CloseEventClient(); } 
-                        catch (ObjectDisposedException) { }
-                        catch (Exception ex) { LogMsg(string.Format("ERROR: EventWriterLoop write failed: {0}", ex.Message)); }
+                        else
+                        {
+                            // Ring full: the WPF consumer is behind. Drop and count.
+                            Interlocked.Increment(ref _dataMessagesDropped);
+                        }
                     }
                 }
-                catch (ThreadInterruptedException) { } 
-                catch (Exception ex) { LogMsg(string.Format("ERROR: EventWriterLoop: {0}", ex.Message)); }
+                catch (ObjectDisposedException) { break; }
+                catch (Exception ex) { LogMsg("RingWriterLoop error: " + ex.Message); }
             }
-        }
-
-        public void WriteToGlobalChannel(byte tickerId, UnifiedMarketDataMessage data)
-        {
-            try
-            {
-                if (_globalDataChannel != null)
-                {
-                    data.IpcQueueTime = Stopwatch.GetTimestamp();
-                    if (!_globalDataChannel.TryWrite(ref data))
-                        LogMsg(string.Format("WARNING: Global data buffer full, dropping message for ticker {0}", tickerId));
-                    else
-                        _globalDataChannel.SignalDataAvailable();
-                }
-            }
-            catch (Exception ex)
-            {
-                LogMsg(string.Format("ERROR: WriteToGlobalChannel failed: {0}", ex.Message));
-            }
+            LogMsg("RingWriterLoop exited.");
         }
 
         public byte RegisterTicker(string instrumentName, double tickSize, double pointValue)
@@ -161,11 +272,45 @@ namespace NinjaTrader.NinjaScript.AddOns
                 byte existing;
                 if (_instrumentToTickerId.TryGetValue(instrumentName, out existing))
                     return existing;
-                var id = _nextTickerId++;
+
+                byte id;
+                if (_availableTickerIds.Count > 0)
+                {
+                    id = _availableTickerIds.Pop();
+                }
+                else
+                {
+                    if (_nextTickerIdInt > byte.MaxValue)
+                    {
+                        LogMsg(string.Format("ERROR: Ticker ID space exhausted (max {0}); cannot register '{1}'", byte.MaxValue, instrumentName));
+                        return 0;
+                    }
+                    id = (byte)_nextTickerIdInt++;
+                }
+
                 _instrumentToTickerId[instrumentName] = id;
                 _tickerIdToInfo[id] = string.Format("{0}|{1}|{2}", instrumentName, tickSize, pointValue);
                 LogMsg(string.Format("Registered ticker '{0}' as ID {1} (TickSize={2}, PointValue={3})", instrumentName, id, tickSize, pointValue));
                 return id;
+            }
+        }
+
+        /// <summary>
+        /// Releases a ticker ID back to the free pool. Called by BookFlowIndi.OnStateChange
+        /// when the indicator terminates. Safe to call after shutdown (no-op).
+        /// </summary>
+        public void UnregisterTicker(byte tickerId)
+        {
+            if (tickerId == 0 || _disposed) return;
+            lock (_tickerLock)
+            {
+                string info;
+                if (!_tickerIdToInfo.TryGetValue(tickerId, out info)) return;
+                var instrumentName = info.Split('|')[0];
+                _instrumentToTickerId.Remove(instrumentName);
+                _tickerIdToInfo.Remove(tickerId);
+                _availableTickerIds.Push(tickerId);
+                LogMsg(string.Format("Unregistered ticker {0} ('{1}'); free pool size = {2}", tickerId, instrumentName, _availableTickerIds.Count));
             }
         }
 
@@ -175,7 +320,7 @@ namespace NinjaTrader.NinjaScript.AddOns
             try
             {
                 if (e.Order == null || e.Order.Instrument == null) return;
-                BroadcastOrderUpdateEvent(e.Order);
+                PublishOrderUpdate(e.Order);
             }
             catch (Exception ex) { LogMsg(string.Format("ERROR: OnOrderUpdate failed: {0}", ex.Message)); }
         }
@@ -184,7 +329,7 @@ namespace NinjaTrader.NinjaScript.AddOns
             try
             {
                 if (e.Execution == null || e.Execution.Order == null || e.Execution.Order.Instrument == null) return;
-                BroadcastExecutionUpdateEvent(e.Execution);
+                PublishExecutionUpdate(e.Execution);
             }
             catch (Exception ex) { LogMsg(string.Format("ERROR: OnExecutionUpdate failed: {0}", ex.Message)); }
         }
@@ -193,410 +338,67 @@ namespace NinjaTrader.NinjaScript.AddOns
             try
             {
                 if (e.Position == null || e.Position.Instrument == null) return;
-                BroadcastPositionUpdateEvent(e.Position);
+                PublishPositionUpdate(e.Position);
             }
             catch (Exception ex) { LogMsg(string.Format("ERROR: OnPositionUpdate failed: {0}", ex.Message)); }
         }
-        #endregion
-
-        #region Event Channel
-        private void RunEventTcpServer()
+        private void OnAccountItemUpdate(object sender, AccountItemEventArgs e)
         {
             try
             {
-                _eventListener = new TcpListener(IPAddress.Loopback, EVENT_PORT);
-                _eventListener.Start();
-                _eventServerRunning = true;
-                LogMsg(string.Format("Event TCP Server listening on port {0}...", EVENT_PORT));
-            }
-            catch (Exception ex)
-            {
-                LogMsg(string.Format("FATAL: Event TCP Server failed to start: {0}", ex.Message));
-                _eventServerRunning = false;
-                return;
-            }
-
-            while (_eventServerRunning)
-            {
-                try
+                var account = e.Account;
+                if (account == null || account.Name == "Backtest") return;
+                // Throttle: account items can fire per-tick while in a position.
+                lock (_accountLock)
                 {
-                    LogMsg("Event TCP Server waiting for a client...");
-                    var client = _eventListener.AcceptTcpClient();
-                    LogMsg("Event TCP client connected.");
-                    
-                    CloseEventClient(); 
-
-                    _eventClient = client;
-                    _lastEventActivity = DateTime.UtcNow;
+                    if (_lastAccountBroadcastUtc.TryGetValue(account.Name, out var last) &&
+                        (DateTime.UtcNow - last).TotalMilliseconds < 250) return;
+                    _lastAccountBroadcastUtc[account.Name] = DateTime.UtcNow;
                 }
-                catch (SocketException)
-                {
-                    if (_eventServerRunning) LogMsg("Event TCP listener socket closed.");
-                }
-                catch (Exception ex)
-                {
-                    if (_eventServerRunning)
-                    {
-                        LogMsg(string.Format("ERROR: Event TCP Server failed: {0}", ex.Message));
-                        Thread.Sleep(1000);
-                    }
-                }
+                PublishAccountItemUpdate(account);
             }
-            _eventListener.Stop();
-            LogMsg("Event TCP Server stopped.");
-        }
-
-        private void CloseEventClient()
-        {
-            if (_eventClient != null)
-            {
-                try { _eventClient.Close(); } catch { } 
-                _eventClient = null;
-                LogMsg("Event TCP client disconnected and cleaned up.");
-            }
-        }
-
-        private void RestartEventChannel()
-        {
-            try
-            {
-                LogMsg("Restarting event channel...");
-                CloseEventClient();
-                LogMsg("Event channel ready for new client.");
-            }
-            catch (Exception ex) { LogMsg(string.Format("ERROR: RestartEventChannel failed: {0}", ex.Message)); }
-        }
-
-        private bool BroadcastEventMessage(string json)
-        {
-            _eventQueue.Enqueue(json);
-            _eventSignal.Set();
-            return true;
-        }
-
-        private void BroadcastOrderUpdateEvent(Order order)
-        {
-            var evtJson = string.Format("{{\"Type\":\"OrderUpdate\",\"OrderId\":\"{0}\",\"State\":{1},\"Filled\":{2},\"AverageFillPrice\":{3}}}", 
-                order.OrderId, (int)order.OrderState, order.Filled, order.AverageFillPrice);
-            BroadcastEventMessage(evtJson);
-        }
-        private void BroadcastExecutionUpdateEvent(Execution execution)
-        {
-            var evtJson = string.Format("{{\"Type\":\"ExecutionUpdate\",\"OrderId\":\"{0}\",\"Price\":{1},\"Quantity\":{2}}}", 
-                execution.OrderId, execution.Price, execution.Quantity);
-            BroadcastEventMessage(evtJson);
-        }
-        private void BroadcastPositionUpdateEvent(Position position)
-        {
-            double pnl = position.GetUnrealizedProfitLoss(PerformanceUnit.Currency);
-            var evtJson = string.Format("{{\"Type\":\"PositionUpdate\",\"Instrument\":\"{0}\",\"Quantity\":{1},\"AveragePrice\":{2},\"UnrealizedPnL\":{3}}}", 
-                position.Instrument.FullName, position.Quantity, position.AveragePrice, pnl);
-            BroadcastEventMessage(evtJson);
-        }
-        #endregion
-
-        #region Control Pipe
-        private void OnControlPipeClientDisconnected()
-        {
-            try { LogMsg("Control pipe client disconnected -> syncing event channel"); RestartEventChannel(); }
-            catch (Exception ex) { LogMsg(string.Format("ERROR: OnControlPipeClientDisconnected: {0}", ex.Message)); }
-        }
-
-        private Task<object> OnControlMessageReceived(ControlMessage message)
-        {
-            try
-            {
-                LogMsg(string.Format("Control message: {0}", message.Type));
-                switch (message.Type)
-                {
-                    case ControlMessage.RequestType.Disconnect:
-                        HandleDisconnectRequest(message); 
-                        break;
-                    case ControlMessage.RequestType.GetTickerDictionary:
-                        return Task.FromResult<object>(HandleGetTickerDictionary(message));
-                    case ControlMessage.RequestType.SubmitOrder:
-                        return Task.FromResult<object>(HandleSubmitOrder(message));
-                    case ControlMessage.RequestType.AccountStatusBroadcast:
-                        return Task.FromResult<object>(HandleGetAccountStatus(message));
-                    case ControlMessage.RequestType.RequestPortfolioState:
-                        return Task.FromResult<object>(HandleGetPortfolioState(message));
-                    default:
-                        LogMsg(string.Format("Unhandled message type: {0}", message.Type)); 
-                        break;
-                }
-            }
-            catch (Exception ex) { LogMsg(string.Format("ERROR: OnControlMessageReceived failed: {0}", ex.Message)); }
-            return Task.FromResult<object>(null);
-        }
-
-        private TickerDictionaryResponse HandleGetTickerDictionary(ControlMessage message)
-        {
-            try
-            {
-                var resp = new TickerDictionaryResponse { RequestId = message.RequestId, Timestamp = DateTime.UtcNow, TickerDictionary = new Dictionary<byte, string>() };
-                lock (_tickerLock)
-                    foreach (var kvp in _tickerIdToInfo)
-                        resp.TickerDictionary[kvp.Key] = kvp.Value;
-                return resp;
-            }
-            catch (Exception ex)
-            {
-                LogMsg(string.Format("ERROR: HandleGetTickerDictionary: {0}", ex.Message));
-                return new TickerDictionaryResponse { RequestId = message.RequestId, Timestamp = DateTime.UtcNow, TickerDictionary = new Dictionary<byte, string>() };
-            }
-        }
-
-        private OrderStatusMessage HandleSubmitOrder(ControlMessage message)
-        {
-            try
-            {
-                var account = GetPreferredAccount();
-                if (account == null)
-                    return Reject(message, "No trading account available");
-
-                switch (message.OrderCommand.Action)
-                {
-                    case OrderCommand.OrderAction.CancelAll: return HandleCancelAllOrders(message, account);
-                    case OrderCommand.OrderAction.CancelAtPrice: return HandleCancelAtPrice(message, account);
-                    case OrderCommand.OrderAction.Flat: return HandleFlattenPositionInternal(message, account);
-                }
-
-                var instrument = Instrument.GetInstrument(message.InstrumentName);
-                if (instrument == null)
-                    return Reject(message, string.Format("Instrument not found: {0}", message.InstrumentName));
-
-                var orderAction = (message.OrderCommand.Action == OrderCommand.OrderAction.BuyMarket || message.OrderCommand.Action == OrderCommand.OrderAction.BuyLimit)
-                    ? OrderAction.Buy : OrderAction.Sell;
-
-                Order order;
-                if (message.OrderCommand.LimitPrice > 0)
-                {
-                    order = account.CreateOrder(instrument, orderAction, OrderType.Limit, OrderEntry.Manual, TimeInForce.Day,
-                        message.OrderCommand.Quantity, message.OrderCommand.LimitPrice, 0, string.Empty, "BookFlow", DateTime.MinValue, null);
-                }
-                else
-                {
-                    order = account.CreateOrder(instrument, orderAction, OrderType.Market, OrderEntry.Manual, TimeInForce.Day,
-                        message.OrderCommand.Quantity, 0, 0, string.Empty, "BookFlow", DateTime.MinValue, null);
-                }
-
-                if (order == null)
-                    return Reject(message, "Failed to create order object");
-
-                lock (_orderLock)
-                    _clientOrderMap[message.OrderCommand.ClientOrderId] = order;
-
-                account.Submit(new[] { order });
-                return new OrderStatusMessage
-                {
-                    ClientOrderId = message.OrderCommand.ClientOrderId,
-                    Status = OrderCommand.OrderStatus.Submitted,
-                    Message = string.Format("Order submitted (NT8 OrderId={0}, Account={1})", order.OrderId, account.Name),
-                    Timestamp = DateTime.UtcNow
-                };
-            }
-            catch (Exception ex)
-            {
-                return Reject(message, ex.Message);
-            }
-        }
-
-        private OrderStatusMessage HandleCancelAtPrice(ControlMessage message, Account account)
-        {
-            try
-            {
-                double price = message.OrderCommand.LimitPrice;
-                var toCancel = account.Orders.Where(o => o.Instrument.FullName == message.InstrumentName &&
-                                                          (o.OrderState == OrderState.Working || o.OrderState == OrderState.Accepted || o.OrderState == OrderState.Submitted) &&
-                                                          o.LimitPrice == price).ToList();
-                foreach (var o in toCancel)
-                    try { account.Cancel(new[] { o }); } catch (Exception ex) { LogMsg(string.Format("Cancel error: {0}", ex.Message)); }
-                var msg = toCancel.Count == 0 ? string.Format("No working orders at {0}", price) : string.Format("Requested cancel of {0} orders @ {1}", toCancel.Count, price);
-                return new OrderStatusMessage { ClientOrderId = message.OrderCommand.ClientOrderId, Status = OrderCommand.OrderStatus.Cancelled, Message = msg, Timestamp = DateTime.UtcNow };
-            }
-            catch (Exception ex) { return Reject(message, string.Format("CancelAtPrice failed: {0}", ex.Message)); }
-        }
-
-        private OrderStatusMessage HandleCancelAllOrders(ControlMessage message, Account account)
-        {
-            try
-            {
-                var toCancel = account.Orders.Where(o => o.OrderState == OrderState.Working || o.OrderState == OrderState.Accepted || o.OrderState == OrderState.Submitted).ToList();
-                int count = 0;
-                foreach (var o in toCancel)
-                {
-                    try { account.Cancel(new[] { o }); count++; } catch (Exception ex) { LogMsg(string.Format("Cancel error: {0}", ex.Message)); }
-                }
-                return new OrderStatusMessage { ClientOrderId = message.OrderCommand.ClientOrderId, Status = OrderCommand.OrderStatus.Cancelled, Message = string.Format("CancelAll requested ({0} orders)", count), Timestamp = DateTime.UtcNow };
-            }
-            catch (Exception ex) { return Reject(message, string.Format("CancelAll failed: {0}", ex.Message)); }
-        }
-
-        private OrderStatusMessage HandleFlattenPositionInternal(ControlMessage message, Account account)
-        {
-            try
-            {
-                var instrument = Instrument.GetInstrument(message.InstrumentName);
-                if (instrument == null) return Reject(message, string.Format("Instrument not found: {0}", message.InstrumentName));
-                var position = account.Positions.FirstOrDefault(p => p.Instrument == instrument);
-                if (position == null || position.Quantity == 0)
-                    return new OrderStatusMessage { ClientOrderId = message.OrderCommand.ClientOrderId, Status = OrderCommand.OrderStatus.Submitted, Message = "No position to flatten", Timestamp = DateTime.UtcNow };
-                var flattenAction = position.MarketPosition == MarketPosition.Long ? OrderAction.Sell : OrderAction.Buy;
-                int qty = Math.Abs(position.Quantity);
-                var order = account.CreateOrder(instrument, flattenAction, OrderType.Market, OrderEntry.Manual, TimeInForce.Day, qty, 0, 0, string.Empty, "BookFlow-Flatten", DateTime.MinValue, null);
-                if (order == null) return Reject(message, "Failed to create flatten order");
-                lock (_orderLock) _clientOrderMap[message.OrderCommand.ClientOrderId] = order;
-                account.Submit(new[] { order });
-                return new OrderStatusMessage { ClientOrderId = message.OrderCommand.ClientOrderId, Status = OrderCommand.OrderStatus.Submitted, Message = string.Format("Flatten submitted ({0} {1})", flattenAction, qty), Timestamp = DateTime.UtcNow };
-            }
-            catch (Exception ex) { return Reject(message, string.Format("Flatten failed: {0}", ex.Message)); }
-        }
-
-        private void HandleDisconnectRequest(ControlMessage message)
-        {
-            try
-            {
-                LogMsg(string.Format("Client disconnect (RequestId={0})", message.RequestId));
-                CloseEventClient();
-            }
-            catch (Exception ex) { LogMsg(string.Format("ERROR: HandleDisconnectRequest: {0}", ex.Message)); }
-        }
-
-        private AccountStateMessage HandleGetAccountStatus(ControlMessage message)
-        {
-            try
-            {
-                var account = GetPreferredAccount();
-                if (account == null)
-                    return new AccountStateMessage { AccountName = "No Account" };
-                return new AccountStateMessage
-                {
-                    AccountName = account.Name,
-                    BuyingPower = account.Get(AccountItem.BuyingPower, Currency.UsDollar),
-                    CashValue = account.Get(AccountItem.CashValue, Currency.UsDollar),
-                    RealizedPnL = account.Get(AccountItem.RealizedProfitLoss, Currency.UsDollar),
-                    UnrealizedPnL = account.Get(AccountItem.UnrealizedProfitLoss, Currency.UsDollar),
-                    NetLiquidation = account.Get(AccountItem.NetLiquidation, Currency.UsDollar),
-                    InitialMargin = account.Get(AccountItem.InitialMargin, Currency.UsDollar),
-                    MaintenanceMargin = account.Get(AccountItem.MaintenanceMargin, Currency.UsDollar),
-                    ExcessEquity = 0.0,
-                    Commission = account.Get(AccountItem.Commission, Currency.UsDollar)
-                };
-            }
-            catch (Exception ex)
-            {
-                LogMsg(string.Format("ERROR: HandleGetAccountStatus: {0}", ex.Message));
-                return new AccountStateMessage { AccountName = "Error" };
-            }
-        }
-
-        private PortfolioStateMessage HandleGetPortfolioState(ControlMessage message)
-        {
-            try
-            {
-                LogMsg("Handling GetPortfolioState request...");
-                var response = new PortfolioStateMessage { RequestId = message.RequestId, Timestamp = DateTime.UtcNow };
-                var account = GetPreferredAccount();
-                if (account == null)
-                {
-                    LogMsg("No account found for portfolio state.");
-                    response.Account = new AccountStateMessage { AccountName = "No Account" };
-                    return response;
-                }
-                LogMsg(string.Format("Found account: {0}. Total orders: {1}, Total positions: {2}", account.Name, account.Orders.Count, account.Positions.Count));
-
-                response.Account = new AccountStateMessage
-                {
-                    AccountName = account.Name,
-                    BuyingPower = account.Get(AccountItem.BuyingPower, Currency.UsDollar),
-                    CashValue = account.Get(AccountItem.CashValue, Currency.UsDollar),
-                    RealizedPnL = account.Get(AccountItem.RealizedProfitLoss, Currency.UsDollar),
-                    UnrealizedPnL = account.Get(AccountItem.UnrealizedProfitLoss, Currency.UsDollar),
-                    NetLiquidation = account.Get(AccountItem.NetLiquidation, Currency.UsDollar),
-                    InitialMargin = account.Get(AccountItem.InitialMargin, Currency.UsDollar),
-                    MaintenanceMargin = account.Get(AccountItem.MaintenanceMargin, Currency.UsDollar),
-                    ExcessEquity = account.Get(AccountItem.BuyingPower, Currency.UsDollar) - account.Get(AccountItem.MaintenanceMargin, Currency.UsDollar),
-                    Commission = account.Get(AccountItem.Commission, Currency.UsDollar)
-                };
-
-                int workingOrderCount = 0;
-                foreach (var order in account.Orders)
-                {
-                    if (order.OrderState == OrderState.Filled || order.OrderState == OrderState.Cancelled || order.OrderState == OrderState.Rejected) continue;
-                    response.Orders.Add(new WorkingOrderMessage
-                    {
-                        OrderId = order.OrderId,
-                        NTOrderId = order.OrderId,
-                        ClientOrderId = order.Name,
-                        Instrument = order.Instrument.FullName,
-                        Side = (byte)(order.OrderAction == OrderAction.Buy ? 1 : 2),
-                        State = (byte)order.OrderState,
-                        Type = (byte)order.OrderType,
-                        TimeInForce = (byte)order.TimeInForce,
-                        Price = order.LimitPrice,
-                        Quantity = order.Quantity,
-                        FilledQuantity = order.Filled,
-                        AverageFillPrice = order.AverageFillPrice
-                    });
-                    workingOrderCount++;
-                }
-                LogMsg(string.Format("Found {0} working orders.", workingOrderCount));
-
-                int activePositionCount = 0;
-                foreach (var pos in account.Positions)
-                {
-                    if (pos.Quantity == 0) continue;
-                    var signedQty = pos.MarketPosition == MarketPosition.Short ? -System.Math.Abs(pos.Quantity) : System.Math.Abs(pos.Quantity);
-                    response.Positions.Add(new PositionMessage
-                    {
-                        Instrument = pos.Instrument.FullName,
-                        Quantity = signedQty,
-                        AveragePrice = pos.AveragePrice,
-                        UnrealizedPnL = pos.GetUnrealizedProfitLoss(PerformanceUnit.Currency),
-                        RealizedPnL = 0,
-                        LastUpdateTime = DateTime.UtcNow
-                    });
-                    activePositionCount++;
-                }
-                LogMsg(string.Format("Found {0} active positions.", activePositionCount));
-
-                LogMsg("Finished handling GetPortfolioState request.");
-                return response;
-            }
-            catch (Exception ex)
-            {
-                LogMsg(string.Format("ERROR: HandleGetPortfolioState: {0}", ex.Message));
-                return new PortfolioStateMessage { RequestId = message.RequestId, Timestamp = DateTime.UtcNow, Account = new AccountStateMessage { AccountName = "Error" } };
-            }
+            catch (Exception ex) { LogMsg(string.Format("ERROR: OnAccountItemUpdate failed: {0}", ex.Message)); }
         }
         #endregion
 
         #region Helpers
-        private OrderStatusMessage Reject(ControlMessage message, string reason)
-        {
-            return new OrderStatusMessage
-            {
-                ClientOrderId = message.OrderCommand != null ? message.OrderCommand.ClientOrderId : null,
-                Status = OrderCommand.OrderStatus.Rejected,
-                Message = reason,
-                Timestamp = DateTime.UtcNow
-            };
-        }
-
         private void LogMsg(string message)
         {
             string logEntry = string.Format("{0} {1:HH:mm:ss.fff} - {2}", _logPrefix, DateTime.Now, message);
             NinjaTrader.Code.Output.Process(logEntry, PrintTo.OutputTab1);
         }
 
+        // Idempotent: safe to call repeatedly. The heartbeat tick re-invokes this so
+        // accounts added at runtime (broker reconnect, new sim account) get hooked.
         private void SubscribeToAccountEvents()
         {
-            foreach (var account in Account.All)
+            lock (_accountLock)
             {
-                if (account.Name == "Backtest") continue;
-                account.OrderUpdate += OnOrderUpdate;
-                account.ExecutionUpdate += OnExecutionUpdate;
-                account.PositionUpdate += OnPositionUpdate;
+                foreach (var account in Account.All)
+                {
+                    if (account.Name == "Backtest") continue;
+                    if (!_subscribedAccounts.Add(account)) continue; // already hooked
+                    account.OrderUpdate += OnOrderUpdate;
+                    account.ExecutionUpdate += OnExecutionUpdate;
+                    account.PositionUpdate += OnPositionUpdate;
+                    account.AccountItemUpdate += OnAccountItemUpdate;
+                    LogMsg("Subscribed to account events: " + account.Name);
+                }
+            }
+        }
+
+        private void UnsubscribeFromAccountEvents()
+        {
+            lock (_accountLock)
+            {
+                foreach (var account in _subscribedAccounts)
+                {
+                    account.OrderUpdate -= OnOrderUpdate;
+                    account.ExecutionUpdate -= OnExecutionUpdate;
+                    account.PositionUpdate -= OnPositionUpdate;
+                    account.AccountItemUpdate -= OnAccountItemUpdate;
+                }
+                _subscribedAccounts.Clear();
             }
         }
         #endregion
@@ -616,5 +418,447 @@ namespace NinjaTrader.NinjaScript.AddOns
                 return null;
             }
         }
+
+        #region WCF Service (Increment 2a)
+
+        private void StartWcfService()
+        {
+            try
+            {
+                _wcfHost = new BookFlowServiceHost(
+                    LogMsg,
+                    BuildPortfolioSnapshot,
+                    WcfSubmitOrder,
+                    WcfCancelAllOrders,
+                    WcfCancelAtPrice,
+                    WcfFlattenPosition,
+                    BuildAccountList,
+                    BuildTickerSnapshot,
+                    BuildPong,
+                    BuildDomSnapshot);
+                _wcfHost.Open();
+            }
+            catch (Exception ex)
+            {
+                LogMsg("ERROR: StartWcfService failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Resolves the account for a command using the Section 10.3 hybrid policy:
+        /// explicit name wins; otherwise a single eligible account is auto-selected;
+        /// ambiguity (multiple eligible, none specified) is rejected rather than guessed.
+        /// </summary>
+        private Account ResolveAccount(string requestedName, out string error)
+        {
+            error = null;
+            try
+            {
+                if (!string.IsNullOrEmpty(requestedName))
+                {
+                    var match = Account.All.FirstOrDefault(a => string.Equals(a.Name, requestedName, StringComparison.OrdinalIgnoreCase));
+                    if (match == null) { error = "Account not found: " + requestedName; return null; }
+                    return match;
+                }
+
+                var eligible = Account.All.Where(a => a.Name != "Backtest").ToList();
+                if (eligible.Count == 0) { error = "No eligible trading account"; return null; }
+                if (eligible.Count == 1) return eligible[0];
+
+                // Prefer a Playback account if present (sim/replay), else demand explicit selection.
+                var playback = eligible.FirstOrDefault(a => a.Name != null && a.Name.StartsWith("Playback", StringComparison.OrdinalIgnoreCase));
+                if (playback != null) return playback;
+
+                error = "Multiple accounts eligible; AccountName must be specified";
+                return null;
+            }
+            catch (Exception ex) { error = ex.Message; return null; }
+        }
+
+        private Pong BuildPong()
+        {
+            return new Pong
+            {
+                ServerTimestampTicks = DateTime.UtcNow.Ticks,
+                DataMessagesSent = System.Threading.Interlocked.Read(ref _dataMessagesSent),
+                DataMessagesDropped = System.Threading.Interlocked.Read(ref _dataMessagesDropped),
+                DataRingFillRatio = _globalDataChannel?.FillRatio ?? 0.0,
+                LiveCallbackCount = _wcfHost?.Callbacks.Count ?? 0,
+            };
+        }
+
+        private AccountListResponse BuildAccountList()
+        {
+            var resp = new AccountListResponse();
+            try
+            {
+                foreach (var a in Account.All)
+                {
+                    if (a.Name == "Backtest") continue;
+                    resp.Accounts.Add(new AccountInfo
+                    {
+                        Name = a.Name,
+                        IsSimulated = a.Name != null && (a.Name.StartsWith("Sim", StringComparison.OrdinalIgnoreCase) || a.Name.StartsWith("Playback", StringComparison.OrdinalIgnoreCase)),
+                        IsConnected = a.Connection != null && a.Connection.Status == ConnectionStatus.Connected,
+                    });
+                }
+                var pref = GetPreferredAccount();
+                resp.PreferredAccount = pref?.Name;
+            }
+            catch (Exception ex) { LogMsg("BuildAccountList error: " + ex.Message); }
+            return resp;
+        }
+
+        private DomSnapshotResponse BuildDomSnapshot(byte tickerId)
+        {
+            string instrument = null;
+            lock (_tickerLock)
+            {
+                if (_tickerIdToInfo.TryGetValue(tickerId, out var info))
+                    instrument = info.Split('|')[0];
+            }
+            return _serverBooks.BuildSnapshot(tickerId, instrument);
+        }
+
+        private TickerSnapshot BuildTickerSnapshot()
+        {
+            var snap = new TickerSnapshot { ServerUtcTime = DateTime.UtcNow };
+            lock (_tickerLock)
+            {
+                foreach (var kvp in _tickerIdToInfo)
+                {
+                    var parts = kvp.Value.Split('|');
+                    var entry = new TickerEntry { TickerId = kvp.Key, InstrumentName = parts.Length > 0 ? parts[0] : "" };
+                    double.TryParse(parts.Length > 1 ? parts[1] : "0", System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var tickSize);
+                    double.TryParse(parts.Length > 2 ? parts[2] : "0", System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var pointValue);
+                    entry.TickSize = tickSize;
+                    entry.PointValue = pointValue;
+                    snap.Entries.Add(entry);
+                }
+            }
+            return snap;
+        }
+
+        private PortfolioSnapshot BuildPortfolioSnapshot()
+        {
+            var snap = new PortfolioSnapshot { ServerUtcTime = DateTime.UtcNow };
+            try
+            {
+                foreach (var account in Account.All)
+                {
+                    if (account.Name == "Backtest") continue;
+
+                    snap.Accounts.Add(new AccountState
+                    {
+                        AccountName = account.Name,
+                        BuyingPower = SafeGet(account, AccountItem.BuyingPower),
+                        CashValue = SafeGet(account, AccountItem.CashValue),
+                        RealizedPnL = SafeGet(account, AccountItem.RealizedProfitLoss),
+                        UnrealizedPnL = SafeGet(account, AccountItem.UnrealizedProfitLoss),
+                        NetLiquidation = SafeGet(account, AccountItem.NetLiquidation),
+                        InitialMargin = SafeGet(account, AccountItem.InitialMargin),
+                        MaintenanceMargin = SafeGet(account, AccountItem.MaintenanceMargin),
+                        ExcessEquity = SafeGet(account, AccountItem.BuyingPower) - SafeGet(account, AccountItem.MaintenanceMargin),
+                        Commission = SafeGet(account, AccountItem.Commission),
+                    });
+
+                    foreach (var order in account.Orders)
+                    {
+                        if (order.OrderState == OrderState.Filled || order.OrderState == OrderState.Cancelled || order.OrderState == OrderState.Rejected) continue;
+                        snap.Orders.Add(new WorkingOrder
+                        {
+                            ClientOrderId = order.Name,
+                            NtOrderId = order.OrderId,
+                            AccountName = account.Name,
+                            InstrumentName = order.Instrument.FullName,
+                            Side = order.OrderAction == OrderAction.Buy || order.OrderAction == OrderAction.BuyToCover ? BookFlowSide.Buy : BookFlowSide.Sell,
+                            Status = MapOrderState(order.OrderState),
+                            LimitPrice = order.LimitPrice,
+                            StopPrice = order.StopPrice,
+                            Quantity = order.Quantity,
+                            FilledQuantity = order.Filled,
+                            AverageFillPrice = order.AverageFillPrice,
+                            SubmitUtcTime = DateTime.UtcNow,
+                        });
+                    }
+
+                    foreach (var pos in account.Positions)
+                    {
+                        if (pos.Quantity == 0) continue;
+                        var signed = pos.MarketPosition == MarketPosition.Short ? -Math.Abs(pos.Quantity) : Math.Abs(pos.Quantity);
+                        snap.Positions.Add(new PositionState
+                        {
+                            AccountName = account.Name,
+                            InstrumentName = pos.Instrument.FullName,
+                            SignedQuantity = signed,
+                            MarketPosition = MapMarketPosition(pos.MarketPosition),
+                            AveragePrice = pos.AveragePrice,
+                            UnrealizedPnL = pos.GetUnrealizedProfitLoss(PerformanceUnit.Currency),
+                            RealizedPnL = 0,
+                        });
+                    }
+                }
+            }
+            catch (Exception ex) { LogMsg("BuildPortfolioSnapshot error: " + ex.Message); }
+            // Stamp after reading NT8 so the snapshot reflects state at >= this version.
+            snap.Version = Interlocked.Read(ref _portfolioVersion);
+            return snap;
+        }
+
+        private double SafeGet(Account account, AccountItem item)
+        {
+            try { return account.Get(item, Currency.UsDollar); } catch { return 0.0; }
+        }
+
+        private static BookFlowOrderStatus MapOrderState(OrderState s)
+        {
+            switch (s)
+            {
+                case OrderState.Submitted: return BookFlowOrderStatus.Submitted;
+                case OrderState.Accepted: return BookFlowOrderStatus.Accepted;
+                case OrderState.Working: return BookFlowOrderStatus.Working;
+                case OrderState.PartFilled: return BookFlowOrderStatus.PartFilled;
+                case OrderState.Filled: return BookFlowOrderStatus.Filled;
+                case OrderState.CancelSubmitted: return BookFlowOrderStatus.CancelSubmitted;
+                case OrderState.Cancelled: return BookFlowOrderStatus.Cancelled;
+                case OrderState.Rejected: return BookFlowOrderStatus.Rejected;
+                default: return BookFlowOrderStatus.Pending;
+            }
+        }
+
+        private static BookFlowMarketPosition MapMarketPosition(MarketPosition p)
+        {
+            switch (p)
+            {
+                case MarketPosition.Long: return BookFlowMarketPosition.Long;
+                case MarketPosition.Short: return BookFlowMarketPosition.Short;
+                default: return BookFlowMarketPosition.Flat;
+            }
+        }
+
+        private OrderAck WcfSubmitOrder(OrderRequest request)
+        {
+            var ack = new OrderAck { ClientOrderId = request?.ClientOrderId, ServerUtcTime = DateTime.UtcNow };
+            try
+            {
+                if (request == null) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = "Null request"; return ack; }
+
+                var account = ResolveAccount(request.AccountName, out var accErr);
+                if (account == null) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = accErr; return ack; }
+
+                var instrument = Instrument.GetInstrument(request.InstrumentName);
+                if (instrument == null) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = "Instrument not found: " + request.InstrumentName; return ack; }
+
+                var isBuy = request.Action == BookFlowOrderAction.BuyMarket || request.Action == BookFlowOrderAction.BuyLimit;
+                var orderAction = isBuy ? OrderAction.Buy : OrderAction.Sell;
+                var isLimit = request.Action == BookFlowOrderAction.BuyLimit || request.Action == BookFlowOrderAction.SellLimit;
+
+                Order order = isLimit
+                    ? account.CreateOrder(instrument, orderAction, OrderType.Limit, OrderEntry.Manual, TimeInForce.Day, request.Quantity, request.LimitPrice, 0, string.Empty, "BookFlow", DateTime.MinValue, null)
+                    : account.CreateOrder(instrument, orderAction, OrderType.Market, OrderEntry.Manual, TimeInForce.Day, request.Quantity, 0, 0, string.Empty, "BookFlow", DateTime.MinValue, null);
+
+                if (order == null) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = "Failed to create order object"; return ack; }
+
+                lock (_orderLock)
+                {
+                    _clientOrderMap[request.ClientOrderId ?? order.OrderId] = order;
+                    if (!string.IsNullOrEmpty(order.OrderId) && !string.IsNullOrEmpty(request.ClientOrderId))
+                        _ntOrderIdToClientId[order.OrderId] = request.ClientOrderId;
+                }
+                account.Submit(new[] { order });
+
+                ack.NtOrderId = order.OrderId;
+                ack.Status = BookFlowOrderStatus.Submitted;
+                ack.Message = string.Format("Submitted to {0}", account.Name);
+            }
+            catch (Exception ex)
+            {
+                ack.Status = BookFlowOrderStatus.Rejected;
+                ack.Message = ex.Message;
+            }
+            return ack;
+        }
+
+        private OperationResult WcfCancelAllOrders(string accountName)
+        {
+            try
+            {
+                var account = ResolveAccount(accountName, out var err);
+                if (account == null) return new OperationResult { Success = false, Message = err };
+                var toCancel = account.Orders.Where(o => o.OrderState == OrderState.Working || o.OrderState == OrderState.Accepted || o.OrderState == OrderState.Submitted).ToList();
+                int n = 0;
+                foreach (var o in toCancel) { try { account.Cancel(new[] { o }); n++; } catch (Exception ex) { LogMsg("Cancel error: " + ex.Message); } }
+                return new OperationResult { Success = true, AffectedCount = n, Message = string.Format("CancelAll requested ({0})", n) };
+            }
+            catch (Exception ex) { return new OperationResult { Success = false, Message = ex.Message }; }
+        }
+
+        private OperationResult WcfCancelAtPrice(string accountName, string instrumentName, double price)
+        {
+            try
+            {
+                var account = ResolveAccount(accountName, out var err);
+                if (account == null) return new OperationResult { Success = false, Message = err };
+                var toCancel = account.Orders.Where(o => o.Instrument.FullName == instrumentName &&
+                                                         (o.OrderState == OrderState.Working || o.OrderState == OrderState.Accepted || o.OrderState == OrderState.Submitted) &&
+                                                         o.LimitPrice == price).ToList();
+                int n = 0;
+                foreach (var o in toCancel) { try { account.Cancel(new[] { o }); n++; } catch (Exception ex) { LogMsg("Cancel error: " + ex.Message); } }
+                return new OperationResult { Success = true, AffectedCount = n, Message = string.Format("Cancelled {0} @ {1}", n, price) };
+            }
+            catch (Exception ex) { return new OperationResult { Success = false, Message = ex.Message }; }
+        }
+
+        private OperationResult WcfFlattenPosition(string accountName, string instrumentName)
+        {
+            try
+            {
+                var account = ResolveAccount(accountName, out var err);
+                if (account == null) return new OperationResult { Success = false, Message = err };
+                var instrument = Instrument.GetInstrument(instrumentName);
+                if (instrument == null) return new OperationResult { Success = false, Message = "Instrument not found: " + instrumentName };
+                var position = account.Positions.FirstOrDefault(p => p.Instrument == instrument);
+                if (position == null || position.Quantity == 0) return new OperationResult { Success = true, AffectedCount = 0, Message = "No position to flatten" };
+                var flattenAction = position.MarketPosition == MarketPosition.Long ? OrderAction.Sell : OrderAction.Buy;
+                int qty = Math.Abs(position.Quantity);
+                var order = account.CreateOrder(instrument, flattenAction, OrderType.Market, OrderEntry.Manual, TimeInForce.Day, qty, 0, 0, string.Empty, "BookFlow-Flatten", DateTime.MinValue, null);
+                if (order == null) return new OperationResult { Success = false, Message = "Failed to create flatten order" };
+                account.Submit(new[] { order });
+                return new OperationResult { Success = true, AffectedCount = 1, Message = string.Format("Flatten {0} {1}", flattenAction, qty) };
+            }
+            catch (Exception ex) { return new OperationResult { Success = false, Message = ex.Message }; }
+        }
+
+        #endregion
+
+        #region WCF Event Fan-out (Increment 2b-1)
+
+        private void OnHeartbeatTick(object state)
+        {
+            if (_disposed) return;
+            try
+            {
+                // Catch accounts added at runtime (broker reconnect, new sim account).
+                SubscribeToAccountEvents();
+
+                var host = _wcfHost;
+                if (host == null) return;
+                var hb = new HeartbeatNotification
+                {
+                    Sequence = System.Threading.Interlocked.Increment(ref _heartbeatSeq),
+                    ServerTimestampTicks = DateTime.UtcNow.Ticks,
+                    PortfolioVersion = System.Threading.Interlocked.Read(ref _portfolioVersion),
+                };
+                host.Callbacks.Broadcast(cb => cb.OnHeartbeat(hb));
+            }
+            catch (Exception ex) { LogMsg("Heartbeat error: " + ex.Message); }
+        }
+
+        private void PublishOrderUpdate(Order order)
+        {
+            var host = _wcfHost;
+            if (host == null) return;
+            string clientId = null;
+            lock (_orderLock) { if (order.OrderId != null) _ntOrderIdToClientId.TryGetValue(order.OrderId, out clientId); }
+            var wo = new WorkingOrder
+            {
+                ClientOrderId = clientId,
+                NtOrderId = order.OrderId,
+                AccountName = order.Account != null ? order.Account.Name : null,
+                InstrumentName = order.Instrument != null ? order.Instrument.FullName : null,
+                Side = (order.OrderAction == OrderAction.Buy || order.OrderAction == OrderAction.BuyToCover) ? BookFlowSide.Buy : BookFlowSide.Sell,
+                Status = MapOrderState(order.OrderState),
+                LimitPrice = order.LimitPrice,
+                StopPrice = order.StopPrice,
+                Quantity = order.Quantity,
+                FilledQuantity = order.Filled,
+                AverageFillPrice = order.AverageFillPrice,
+                SubmitUtcTime = DateTime.UtcNow,
+            };
+            var n = new OrderUpdateNotification { Order = wo };
+            lock (_publishLock)
+            {
+                n.Version = Interlocked.Increment(ref _portfolioVersion);
+                host.Callbacks.Broadcast(cb => cb.OnOrderUpdate(n));
+            }
+        }
+
+        private void PublishExecutionUpdate(Execution exec)
+        {
+            var host = _wcfHost;
+            if (host == null) return;
+            var ntOrderId = exec.Order != null ? exec.Order.OrderId : null;
+            string clientId = null;
+            if (ntOrderId != null) lock (_orderLock) { _ntOrderIdToClientId.TryGetValue(ntOrderId, out clientId); }
+            var n = new ExecutionUpdateNotification
+            {
+                ExecutionId = exec.ExecutionId,
+                NtOrderId = ntOrderId,
+                ClientOrderId = clientId,
+                AccountName = exec.Account != null ? exec.Account.Name : null,
+                InstrumentName = exec.Instrument != null ? exec.Instrument.FullName : null,
+                MarketPosition = MapMarketPosition(exec.MarketPosition),
+                Price = exec.Price,
+                Quantity = exec.Quantity,
+                UtcTime = DateTime.UtcNow,
+            };
+            lock (_publishLock)
+            {
+                n.Version = Interlocked.Increment(ref _portfolioVersion);
+                host.Callbacks.Broadcast(cb => cb.OnExecutionUpdate(n));
+            }
+        }
+
+        private void PublishPositionUpdate(Position pos)
+        {
+            var host = _wcfHost;
+            if (host == null) return;
+            var signed = pos.MarketPosition == MarketPosition.Short ? -Math.Abs(pos.Quantity) : Math.Abs(pos.Quantity);
+            double pnl;
+            try { pnl = pos.GetUnrealizedProfitLoss(PerformanceUnit.Currency); } catch { pnl = 0; }
+            var ps = new PositionState
+            {
+                AccountName = pos.Account != null ? pos.Account.Name : null,
+                InstrumentName = pos.Instrument != null ? pos.Instrument.FullName : null,
+                SignedQuantity = signed,
+                MarketPosition = MapMarketPosition(pos.MarketPosition),
+                AveragePrice = pos.AveragePrice,
+                UnrealizedPnL = pnl,
+                RealizedPnL = 0,
+            };
+            var n = new PositionUpdateNotification { Position = ps };
+            lock (_publishLock)
+            {
+                n.Version = Interlocked.Increment(ref _portfolioVersion);
+                host.Callbacks.Broadcast(cb => cb.OnPositionUpdate(n));
+            }
+        }
+
+        private void PublishAccountItemUpdate(Account account)
+        {
+            var host = _wcfHost;
+            if (host == null) return;
+            var state = new AccountState
+            {
+                AccountName = account.Name,
+                BuyingPower = SafeGet(account, AccountItem.BuyingPower),
+                CashValue = SafeGet(account, AccountItem.CashValue),
+                RealizedPnL = SafeGet(account, AccountItem.RealizedProfitLoss),
+                UnrealizedPnL = SafeGet(account, AccountItem.UnrealizedProfitLoss),
+                NetLiquidation = SafeGet(account, AccountItem.NetLiquidation),
+                InitialMargin = SafeGet(account, AccountItem.InitialMargin),
+                MaintenanceMargin = SafeGet(account, AccountItem.MaintenanceMargin),
+                ExcessEquity = SafeGet(account, AccountItem.BuyingPower) - SafeGet(account, AccountItem.MaintenanceMargin),
+                Commission = SafeGet(account, AccountItem.Commission),
+            };
+            var n = new AccountItemUpdateNotification { AccountName = account.Name, Account = state };
+            lock (_publishLock)
+            {
+                n.Version = Interlocked.Increment(ref _portfolioVersion);
+                host.Callbacks.Broadcast(cb => cb.OnAccountItemUpdate(n));
+            }
+        }
+
+        #endregion
     }
 }

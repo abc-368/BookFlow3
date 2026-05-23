@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -6,4 +6,9 @@
     <RootNamespace>BookFlow.Shared</RootNamespace>
     <Nullable>disable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- WCF contract attributes ([ServiceContract], [OperationContract], [DataContract])
+         live here so both NT8 (net48) and BookFlowApp (.NET 9) consume the same contracts. -->
+    <PackageReference Include="System.ServiceModel.Primitives" Version="4.10.3" />
+  </ItemGroup>
 </Project>

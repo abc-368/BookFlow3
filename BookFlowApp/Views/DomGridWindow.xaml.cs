@@ -49,9 +49,17 @@ namespace BookFlow.App.Views
         
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            // TODO: Open settings dialog
-            System.Windows.MessageBox.Show("Settings dialog will be implemented in future version.", 
-                "DOM Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (ViewModel == null)
+            {
+                System.Windows.MessageBox.Show("No ViewModel available.", "DOM Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var win = new GridSettingsWindow(ViewModel)
+            {
+                Owner = this
+            };
+            win.ShowDialog();
         }
         
         private void CenterButton_MouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)

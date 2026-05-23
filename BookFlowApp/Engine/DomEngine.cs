@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
@@ -9,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using BookFlow.App.Interfaces;
 using BookFlow.Shared.Contracts;
+using BookFlow.Shared.Service;
 
 namespace BookFlow.App.Engine
 {
@@ -23,10 +25,12 @@ namespace BookFlow.App.Engine
         private readonly SortedDictionary<decimal, PriceLevel> _bidBook = new();
         private readonly SortedDictionary<decimal, PriceLevel> _askBook = new();
         
-        // Double-buffering for thread-safe snapshots
+        // Lock-free snapshot publication: the writer (timer/ForceUpdate) builds a fresh
+        // immutable BookSnapshot and atomically publishes it via a volatile reference.
+        // Readers (UI poll / statistics) just read the reference — no lock, no contention.
+        // Concurrent writers are serialized by _writerLock so they don't duplicate work.
         private volatile BookSnapshot _readerSnapshot;
-        private volatile BookSnapshot _writerSnapshot;
-        private readonly ReaderWriterLockSlim _snapshotLock = new();
+        private readonly object _writerLock = new object();
         
         // Reactive streams
         private readonly Subject<LadderUpdate> _ladderUpdatesSubject = new();
@@ -37,6 +41,8 @@ namespace BookFlow.App.Engine
         private decimal? _bestAsk;
         private decimal? _lastTradedPrice;
         private long _lastTradedVolume;
+        private decimal? _lastBidHitPrice; // last price a market sell executed against (hit the bid)
+        private decimal? _lastAskHitPrice; // last price a market buy executed against (lifted the ask)
         private decimal _tickSize = 0.25m; // Provided from controller
         private decimal _pointValue = 50m;  // Provided from controller
         
@@ -73,14 +79,14 @@ namespace BookFlow.App.Engine
         private IDisposable? _portfolioSubscription;
         private System.Threading.Timer? _statisticsTimer;
         private System.Threading.Timer? _snapshotTimer;
-        
-        // Price scale guard to protect against half/double price ladders
-        private decimal? _priceScaleBaseline = null; // baseline raw price observed
-        private decimal _priceScaleCorrection = 1m;  // 1=normal, 2=double raw, 0.5=half raw
-        private const decimal ScaleTolerance = 0.02m; // 2% tolerance
-        private int _scaleHalfHits = 0;
-        private int _scaleDoubleHits = 0;
-        private const int ScaleConfirmThreshold = 5; // require a few hits before switching
+        private PropertyChangedEventHandler? _settingsChangedHandler;
+        private int _disposeGuard; // 0 = live, 1 = disposed (idempotency)
+
+        // Q4 snapshot handshake: buffer live ticks while seeding the book from the server
+        // snapshot, then drain (discarding ticks already in the snapshot) and go live.
+        private readonly object _seedLock = new object();
+        private readonly ConcurrentQueue<UnifiedMarketDataMessage> _seedBuffer = new();
+        private volatile bool _seeding;
 
         public string InstrumentName { get; }
         public byte TickerId { get; }
@@ -109,9 +115,8 @@ namespace BookFlow.App.Engine
             
             UpdateConfigurationFromSettings();
             
-            // Initialize empty snapshots
+            // Initialize empty snapshot
             _readerSnapshot = CreateEmptySnapshot();
-            _writerSnapshot = CreateEmptySnapshot();
             
             // Set up conflated observable streams
             LadderUpdates = _ladderUpdatesSubject
@@ -147,12 +152,15 @@ namespace BookFlow.App.Engine
                     }
                 }
                 
+                // Start buffering live ticks before requesting the snapshot, so nothing is
+                // lost in the window between snapshot capture and going live (Q4 handshake).
+                _seeding = true;
                 _dataSubscription = _dataFeed.MarketDataStream
                     .Where(msg => msg.TickerId == TickerId)
-                    .Subscribe(ProcessMessage, 
+                    .Subscribe(OnMarketMessage,
                               ex => OnError("Market data stream error", ex),
                               () => OnCompleted("Market data stream completed"));
-                
+
                 _portfolioSubscription = _dataFeed.PortfolioStream
                     .Subscribe(ProcessPortfolioUpdate,
                               ex => OnError("Portfolio stream error", ex));
@@ -161,12 +169,24 @@ namespace BookFlow.App.Engine
                 {
                     _tradingService.OrderBookChanged += OnOrderBookChanged;
                 }
-                
+
                 _isConnected = true;
                 ConnectionStatusChanged?.Invoke(this, true);
-                
+
+                // Seed the ladder from the authoritative server book, then drain buffered ticks.
+                try
+                {
+                    var snapshot = await _dataFeed.RequestDomSnapshotAsync(TickerId);
+                    SeedFromSnapshot(snapshot);
+                }
+                catch (Exception ex)
+                {
+                    OnError("DOM snapshot seed failed", ex);
+                    SeedFromSnapshot(null); // degrade gracefully: go live, rebuild from stream
+                }
+
                 try { await _dataFeed.RequestPortfolioStateAsync(); } catch (Exception ex) { OnError("Failed to request initial portfolio state", ex); }
-                
+
                 return true;
             }
             catch (Exception ex)
@@ -180,10 +200,15 @@ namespace BookFlow.App.Engine
         {
             _isConnected = false;
             ConnectionStatusChanged?.Invoke(this, false);
-            
+
+            if (_tradingService != null)
+                _tradingService.OrderBookChanged -= OnOrderBookChanged;
+
             _dataSubscription?.Dispose();
             _portfolioSubscription?.Dispose();
-            
+            _dataSubscription = null;
+            _portfolioSubscription = null;
+
             await Task.CompletedTask;
         }
         
@@ -223,6 +248,70 @@ namespace BookFlow.App.Engine
         public void ForceUpdate()
         {
             UpdateSnapshot(null);
+        }
+
+        // Entry point for the live stream. While seeding, ticks are buffered; once the
+        // snapshot is applied they are drained (deduped by global sequence) and we go live.
+        private void OnMarketMessage(UnifiedMarketDataMessage message)
+        {
+            if (_seeding)
+            {
+                lock (_seedLock)
+                {
+                    if (_seeding) { _seedBuffer.Enqueue(message); return; }
+                }
+            }
+            ProcessMessage(message);
+        }
+
+        // Seeds the books from the server L2 snapshot, then drains buffered live ticks,
+        // discarding any whose global sequence (Reserved1) is already reflected in the
+        // snapshot, and flips to live processing. Null/empty snapshot degrades to the old
+        // behavior (build purely from the live stream).
+        private void SeedFromSnapshot(DomSnapshotResponse? snapshot)
+        {
+            long lastSeq = snapshot?.LastSequence ?? 0;
+
+            if (snapshot != null && (snapshot.Bids.Count > 0 || snapshot.Asks.Count > 0))
+            {
+                lock (_syncLock)
+                {
+                    _bidBook.Clear();
+                    _askBook.Clear();
+                    foreach (var b in snapshot.Bids)
+                    {
+                        var price = AlignToTick((decimal)b.Price);
+                        var lvl = PriceLevel.CreateEmpty(price);
+                        lvl.UpdateBid(b.Volume, 1);
+                        _bidBook[price] = lvl;
+                    }
+                    foreach (var a in snapshot.Asks)
+                    {
+                        var price = AlignToTick((decimal)a.Price);
+                        var lvl = PriceLevel.CreateEmpty(price);
+                        lvl.UpdateAsk(a.Volume, 1);
+                        _askBook[price] = lvl;
+                    }
+                    UpdateBestPricesFromBook();
+                    if (snapshot.LastTradePrice > 0)
+                        _lastTradedPrice = AlignToTick((decimal)snapshot.LastTradePrice);
+                    Interlocked.Increment(ref _lastMarketDataChangeSequence);
+                }
+                OnInfo($"Seeded ladder from snapshot: {snapshot.Bids.Count} bids, {snapshot.Asks.Count} asks @ seq {lastSeq}");
+            }
+
+            // Drain buffered live ticks under the seed lock and flip to live atomically so
+            // no message is lost or reordered against the snapshot.
+            lock (_seedLock)
+            {
+                while (_seedBuffer.TryDequeue(out var m))
+                {
+                    if (m.Reserved1 > lastSeq) ProcessMessage(m);
+                }
+                _seeding = false;
+            }
+
+            ForceUpdate();
         }
         
         private void ProcessMarketDataMessage(UnifiedMarketDataMessage message)
@@ -311,6 +400,11 @@ namespace BookFlow.App.Engine
             }
 
             UpdateBestPricesFromBook();
+            // NOTE: engine-level crossed-level pruning intentionally omitted. Best-price
+            // resolution leaves a crossing level stranded in the spread (not >= bestAsk),
+            // so a resolved-best prune is a no-op there, and raw-extreme pruning risks
+            // removing valid depth (which leg is stale is ambiguous from depth alone).
+            // Q3 is handled robustly at the display layer via IsBidZone/IsAskZone gating.
         }
 
         private void UpdateBestBid(decimal price, long volume)
@@ -404,6 +498,8 @@ namespace BookFlow.App.Engine
 
             Interlocked.Increment(ref _lastMarketDataChangeSequence);
 
+            // Record the aggressor-side execution price (set after hitBid is resolved below).
+
             // Determine trade side using best bid/ask when available; otherwise use proximity
             bool hitBid;
             if (_bestBid.HasValue && _bestAsk.HasValue && _bestBid > 0 && _bestAsk > 0)
@@ -427,36 +523,52 @@ namespace BookFlow.App.Engine
                 hitBid = true;
             }
 
-            // Find nearest existing price level (within half a tick) to attribute the trade
-            var allBooks = new Dictionary<decimal, PriceLevel>();
-            foreach (var kvp in _bidBook) allBooks[kvp.Key] = kvp.Value;
-            foreach (var kvp in _askBook) allBooks[kvp.Key] = kvp.Value;
+            // Q1: remember the last execution price per aggressor side.
+            if (hitBid) _lastBidHitPrice = price;
+            else _lastAskHitPrice = price;
 
-            if (allBooks.Count == 0)
+            if (_bidBook.Count == 0 && _askBook.Count == 0)
                 return;
 
-            decimal nearestKey = 0m;
-            decimal minDiff = decimal.MaxValue;
-            foreach (var key in allBooks.Keys)
+            // `price` is already tick-aligned (ProcessL1Update -> AlignToTick), so the level
+            // is almost always the exact key: O(log N) dictionary lookups, not an O(N) scan
+            // of both books on every trade tick (Antigravity 2.1).
+            decimal nearestKey;
+            if (_bidBook.ContainsKey(price) || _askBook.ContainsKey(price))
             {
-                var diff = Math.Abs(key - price);
-                if (diff < minDiff)
+                nearestKey = price;
+            }
+            else
+            {
+                // Off-grid fallback: nearest key across both books.
+                nearestKey = 0m;
+                decimal minDiff = decimal.MaxValue;
+                foreach (var key in _bidBook.Keys)
                 {
-                    minDiff = diff;
-                    nearestKey = key;
+                    var diff = Math.Abs(key - price);
+                    if (diff < minDiff) { minDiff = diff; nearestKey = key; }
                 }
+                foreach (var key in _askBook.Keys)
+                {
+                    var diff = Math.Abs(key - price);
+                    if (diff < minDiff) { minDiff = diff; nearestKey = key; }
+                }
+                var maxAllowedDiff = _tickSize > 0 ? _tickSize / 2m : 0.0000001m;
+                if (minDiff > maxAllowedDiff) return; // too far off-grid to attribute
             }
 
-            var maxAllowedDiff = _tickSize > 0 ? _tickSize / 2m : 0.0000001m;
-            if (minDiff <= maxAllowedDiff && allBooks.TryGetValue(nearestKey, out var level))
+            // Mutate each side's level INDEPENDENTLY. On a locked market the same price
+            // exists in both books; writing a merged level back to both would clobber the
+            // opposite side's depth (audit P0). Each book keeps its own volume.
+            if (_bidBook.TryGetValue(nearestKey, out var bidLevel))
             {
-                level.RecordTrade(volume, hitBid);
-
-                // Write back to appropriate side book if exists
-                if (_bidBook.ContainsKey(nearestKey))
-                    _bidBook[nearestKey] = level;
-                if (_askBook.ContainsKey(nearestKey))
-                    _askBook[nearestKey] = level;
+                bidLevel.RecordTrade(volume, hitBid);
+                _bidBook[nearestKey] = bidLevel;
+            }
+            if (_askBook.TryGetValue(nearestKey, out var askLevel))
+            {
+                askLevel.RecordTrade(volume, hitBid);
+                _askBook[nearestKey] = askLevel;
             }
         }
         
@@ -501,25 +613,45 @@ namespace BookFlow.App.Engine
             if (_disposed)
                 return;
                 
-            try
+            // Serialize writers so two concurrent UpdateSnapshot calls (timer + ForceUpdate)
+            // don't duplicate the build. Readers never take this lock.
+            lock (_writerLock)
             {
-                Dictionary<decimal, PriceLevel> bidBookSnapshot;
-                Dictionary<decimal, PriceLevel> askBookSnapshot;
+                Dictionary<decimal, PriceLevel> bidBookSnapshot = new();
+                Dictionary<decimal, PriceLevel> askBookSnapshot = new();
                 decimal? centerPrice;
-                
-                // First, take snapshots under the processing lock to avoid enumeration issues
+
+                // Calculate price range around current market (limit to reasonable range)
+                var maxLevelsPerSide = Math.Max(_visibleLevelsAbove, _visibleLevelsBelow) + 50; // Extra buffer beyond visible
+
+                // Take snapshots of only relevant price levels under the processing lock to avoid
+                // cloning the entire book and minimize lock duration (Antigravity 2.2).
                 lock (_syncLock)
                 {
                     centerPrice = _bestBid ?? _bestAsk ?? _lastTradedPrice;
-                    bidBookSnapshot = _bidBook.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-                    askBookSnapshot = _askBook.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                    if (centerPrice.HasValue)
+                    {
+                        var minBidPrice = centerPrice.Value - (maxLevelsPerSide * _tickSize);
+                        var maxAskPrice = centerPrice.Value + (maxLevelsPerSide * _tickSize);
+                        
+                        foreach (var kvp in _bidBook)
+                        {
+                            if (kvp.Key >= minBidPrice)
+                                bidBookSnapshot[kvp.Key] = kvp.Value;
+                        }
+                        foreach (var kvp in _askBook)
+                        {
+                            if (kvp.Key <= maxAskPrice)
+                                askBookSnapshot[kvp.Key] = kvp.Value;
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: copy everything if no center price
+                        foreach (var kvp in _bidBook) bidBookSnapshot[kvp.Key] = kvp.Value;
+                        foreach (var kvp in _askBook) askBookSnapshot[kvp.Key] = kvp.Value;
+                    }
                 }
-                
-                // Now we can safely process the snapshots without locks
-                _snapshotLock.EnterWriteLock();
-                
-                // Calculate price range around current market (limit to reasonable range)
-                var maxLevelsPerSide = Math.Max(_visibleLevelsAbove, _visibleLevelsBelow) + 50; // Extra buffer beyond visible
                 
                 // Create new snapshot from current state - only include relevant price levels
                 var combinedBook = new Dictionary<decimal, PriceLevel>();
@@ -577,7 +709,9 @@ namespace BookFlow.App.Engine
                     UpdateOrderCountsInBook(combinedBook);
                 }
                 
-                _writerSnapshot = new BookSnapshot(
+                // Atomically publish the freshly-built immutable snapshot. The volatile
+                // reference write makes it visible to all readers without a lock.
+                _readerSnapshot = new BookSnapshot(
                     combinedBook,
                     InstrumentName,
                     TickerId,
@@ -586,18 +720,9 @@ namespace BookFlow.App.Engine
                     _bestAsk,
                     _lastTradedPrice,
                     _lastTradedVolume);
-                
-                // Swap buffers
-                var temp = _readerSnapshot;
-                _readerSnapshot = _writerSnapshot;
-                _writerSnapshot = temp;
             }
-            finally
-            {
-                _snapshotLock.ExitWriteLock();
-            }
-            
-            // Publish ladder update
+
+            // Publish ladder update (outside the writer lock).
             PublishLadderUpdate();
         }
 
@@ -694,6 +819,8 @@ namespace BookFlow.App.Engine
                     LastPrice = _lastTradedPrice,
                     LastVolume = _lastTradedVolume,
                     Spread = snapshot.GetSpread(),
+                    LastBidHitPrice = _lastBidHitPrice,
+                    LastAskHitPrice = _lastAskHitPrice,
                     SequenceNumber = Interlocked.Increment(ref _sequenceNumber)
                 };
 
@@ -818,15 +945,8 @@ namespace BookFlow.App.Engine
         
         public BookSnapshot GetBookSnapshot()
         {
-            _snapshotLock.EnterReadLock();
-            try
-            {
-                return _readerSnapshot;
-            }
-            finally
-            {
-                _snapshotLock.ExitReadLock();
-            }
+            // Lock-free: volatile read of the latest published immutable snapshot.
+            return _readerSnapshot;
         }
         
         public StatisticsSnapshot GetStatisticsSnapshot()
@@ -928,15 +1048,8 @@ namespace BookFlow.App.Engine
                 // Reset performance counters
                 _messagesProcessed = 0;
                 
-                // Clear snapshots
+                // Clear snapshot
                 _readerSnapshot = CreateEmptySnapshot();
-                _writerSnapshot = CreateEmptySnapshot();
-
-                // Reset any scale auto-detection state
-                _priceScaleCorrection = 1m;
-                _priceScaleBaseline = null;
-                _scaleHalfHits = 0;
-                _scaleDoubleHits = 0;
             }
             
             // Publish empty ladder update to clear UI
@@ -998,6 +1111,8 @@ namespace BookFlow.App.Engine
                     LastPrice = _lastTradedPrice,
                     LastVolume = _lastTradedVolume,
                     Spread = snapshot.GetSpread(),
+                    LastBidHitPrice = _lastBidHitPrice,
+                    LastAskHitPrice = _lastAskHitPrice,
                     SequenceNumber = Interlocked.Increment(ref _sequenceNumber)
                 };
 
@@ -1040,15 +1155,18 @@ namespace BookFlow.App.Engine
         
         private void OnError(string message, Exception ex)
         {
+            // Always persist errors — previously these vanished in production (audit P1-4).
+            BookFlow.App.Diagnostics.BookFlowLog.Error($"DomEngine:{InstrumentName}", message, ex);
             if (_debugLoggingEnabled)
             {
                 System.Diagnostics.Debug.WriteLine($"[DomEngine:{InstrumentName}] {message}: {ex.Message}");
             }
-            // In a production system, this would use a proper logging framework
         }
-        
+
         private void OnCompleted(string message)
         {
+            // Data-stream completion is a meaningful signal (feed ended) — always record it.
+            BookFlow.App.Diagnostics.BookFlowLog.Info($"DomEngine:{InstrumentName}", message);
             if (_debugLoggingEnabled)
             {
                 System.Diagnostics.Debug.WriteLine($"[DomEngine:{InstrumentName}] {message}");
@@ -1072,16 +1190,17 @@ namespace BookFlow.App.Engine
             _visibleLevelsAbove = centerOffset;
             _visibleLevelsBelow = totalRows - centerOffset;
             _conflationInterval = TimeSpan.FromMilliseconds(_settings.RefreshRateMs);
-            
-            // Subscribe to settings changes
-            _settings.PropertyChanged += (sender, args) =>
+
+            // Subscribe to settings changes. Stored as a field so Dispose can detach it —
+            // otherwise DomSettings (which can outlive the engine) roots the engine forever.
+            _settingsChangedHandler = (sender, args) =>
             {
                 if (args.PropertyName == nameof(DomSettings.MaxVisibleRows) ||
                     args.PropertyName == nameof(DomSettings.CenterPriceOffset))
                 {
                     var newTotalRows = _settings.MaxVisibleRows;
                     var newCenterOffset = Math.Min(_settings.CenterPriceOffset, newTotalRows / 2);
-                    
+
                     _visibleLevelsAbove = newCenterOffset;
                     _visibleLevelsBelow = newTotalRows - newCenterOffset;
                 }
@@ -1090,6 +1209,7 @@ namespace BookFlow.App.Engine
                     _conflationInterval = TimeSpan.FromMilliseconds(_settings.RefreshRateMs);
                 }
             };
+            _settings.PropertyChanged += _settingsChangedHandler;
         }
         
         public DomSettings Settings => _settings;
@@ -1134,21 +1254,28 @@ namespace BookFlow.App.Engine
         
         public void Dispose()
         {
-            if (_disposed)
+            // Idempotent: guard against concurrent/double dispose.
+            if (Interlocked.Exchange(ref _disposeGuard, 1) != 0)
                 return;
-                
             _disposed = true;
-            
+
+            // Detach event subscriptions that would otherwise root this engine.
+            if (_tradingService != null)
+                _tradingService.OrderBookChanged -= OnOrderBookChanged;
+            if (_settingsChangedHandler != null)
+            {
+                _settings.PropertyChanged -= _settingsChangedHandler;
+                _settingsChangedHandler = null;
+            }
+
             _statisticsTimer?.Dispose();
             _snapshotTimer?.Dispose();
-            
+
             _dataSubscription?.Dispose();
             _portfolioSubscription?.Dispose();
-            
+
             _ladderUpdatesSubject?.Dispose();
             _statisticsUpdatesSubject?.Dispose();
-            
-            _snapshotLock?.Dispose();
         }
         
         // Align price to the configured tick size grid

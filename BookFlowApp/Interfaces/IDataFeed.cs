@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using BookFlow.Shared.Contracts;
+using BookFlow.Shared.Service;
 
 namespace BookFlow.App.Interfaces
 {
@@ -67,5 +68,11 @@ namespace BookFlow.App.Interfaces
         /// </summary>
         /// <returns>List of available instruments with their properties.</returns>
         Task<System.Collections.Generic.List<TickerInfo>> GetAvailableInstrumentsAsync();
+
+        /// <summary>
+        /// Requests the authoritative L2 depth snapshot for a ticker (Q4), used to seed the
+        /// ladder on engine start. Returns null if unavailable.
+        /// </summary>
+        Task<DomSnapshotResponse?> RequestDomSnapshotAsync(byte tickerId);
     }
 }

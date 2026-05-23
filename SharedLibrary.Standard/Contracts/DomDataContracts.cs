@@ -319,6 +319,10 @@ namespace BookFlow.Shared.Contracts
         public decimal? Spread { get; set; }
         public long SequenceNumber { get; set; }
         public bool ShouldCenter { get; set; }
+        // Most recent trade prices by aggressor side: a market sell hits the bid,
+        // a market buy hits the ask. Used to mark the last-executed level (Q1).
+        public decimal? LastBidHitPrice { get; set; }
+        public decimal? LastAskHitPrice { get; set; }
         public override string ToString() => $"Ladder[{InstrumentName}]: Bid={BestBid:F2}, Ask={BestAsk:F2}, Last={LastPrice:F2}@{LastVolume}, Levels={VisibleLevels.Count}, Seq={SequenceNumber}";
     }
 

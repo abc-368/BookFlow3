@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.0.11010.61 d18.0
+VisualStudioVersion = 18.0.11010.61
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "NT8DataEngine", "NT8DataEngine", "{56FAAE28-8521-8512-0EB7-2BDD59EAB7F5}"
 EndProject
@@ -12,6 +12,12 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BookFlow.Shared", "SharedLibrary.Standard\BookFlow.Shared.csproj", "{C176C7F6-73A1-3AD6-1607-CD267AB1E665}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BookFlow.App", "BookFlowApp\BookFlow.App.csproj", "{25B1F827-03D2-27BE-DEDD-40124B82582F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BookFlow.Tests", "BookFlow.Tests\BookFlow.Tests.csproj", "{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SharedLibrary.Standard", "SharedLibrary.Standard", "{65B9CADC-0C54-BE12-DAA3-AB1751A70133}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "BookFlowApp", "BookFlowApp", "{D7709059-90DE-13C1-DE24-66237FDC4535}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -59,6 +65,18 @@ Global
 		{25B1F827-03D2-27BE-DEDD-40124B82582F}.Release|x64.Build.0 = Release|Any CPU
 		{25B1F827-03D2-27BE-DEDD-40124B82582F}.Release|x86.ActiveCfg = Release|Any CPU
 		{25B1F827-03D2-27BE-DEDD-40124B82582F}.Release|x86.Build.0 = Release|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Debug|x64.Build.0 = Debug|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Debug|x86.Build.0 = Debug|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Release|x64.ActiveCfg = Release|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Release|x64.Build.0 = Release|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Release|x86.ActiveCfg = Release|Any CPU
+		{9144EB2E-F313-4A78-8DE8-3C98249E8FC5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

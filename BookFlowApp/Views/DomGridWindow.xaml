@@ -25,6 +25,8 @@
         <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
         <converters:GreaterThanZeroToBooleanConverter x:Key="GreaterThanZeroToBooleanConverter"/>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <!-- Added converter for bold binding -->
+        <converters:BooleanToFontWeightConverter x:Key="BooleanToFontWeightConverter"/>
         
         <!-- Button style -->
         <Style x:Key="DomButtonStyle" TargetType="Button">
@@ -131,6 +133,9 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <converters:ColumnWidthConverter x:Key="ColumnWidthConverter"/>
+        <converters:HexToBrushConverter x:Key="HexToBrushConverter"/>
     </Window.Resources>
 
     <Grid>
@@ -365,7 +370,8 @@
                     <dxg:GridControl.Columns>
                         
                         <!-- 1. Observations Column -->
-                        <dxg:GridColumn x:Name="ObservationsColumn" FieldName="Observations" Header="" AllowResizing="False" Width="30">
+                        <dxg:GridColumn x:Name="ObservationsColumn" FieldName="Observations" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[Observations].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
@@ -378,7 +384,8 @@
                         </dxg:GridColumn>
 
                         <!-- 2. Bid Orders Info Column -->
-                        <dxg:GridColumn x:Name="BidOrdersColumn" FieldName="DisplayBidOrderCount" Header="" AllowResizing="False" Width="35">
+                        <dxg:GridColumn x:Name="BidOrdersColumn" FieldName="DisplayBidOrderCount" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[BidOrders].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border>
@@ -401,7 +408,8 @@
                          </dxg:GridColumn>
 
                          <!-- 3. Ask Orders Info Column -->
-                         <dxg:GridColumn x:Name="AskOrdersColumn" FieldName="DisplayAskOrderCount" Header="" AllowResizing="False" Width="35">
+                         <dxg:GridColumn x:Name="AskOrdersColumn" FieldName="DisplayAskOrderCount" Header="" AllowResizing="False"
+                                         Width="{Binding DataContext.Settings.ColumnsByKey[AskOrders].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border>
@@ -424,7 +432,8 @@
                          </dxg:GridColumn>
 
                         <!-- 4. Open Position P&L Column -->
-                        <dxg:GridColumn x:Name="OpenPositionPnLColumn" FieldName="OpenPositionPnL" Header="" AllowResizing="False" Width="45">
+                        <dxg:GridColumn x:Name="OpenPositionPnLColumn" FieldName="OpenPositionPnL" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[OpenPositionPnL].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
@@ -439,12 +448,12 @@
                         </dxg:GridColumn>
 
                         <!-- 5. Volume Profile Column -->
-                        <dxg:GridColumn x:Name="VolumeProfileColumn" FieldName="VolumeProfile" Header="" AllowResizing="False" Width="50">
+                        <dxg:GridColumn x:Name="VolumeProfileColumn" FieldName="VolumeProfile" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[VolumeProfile].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
                                         <Grid>
-                                            <!-- Volume Profile Bar -->
                                             <Border Background="#FFB0BEC5" HorizontalAlignment="Right" VerticalAlignment="Stretch">
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource VolumeProfileBarConverter}">
@@ -459,7 +468,6 @@
                                                     </MultiBinding>
                                                 </Border.Visibility>
                                             </Border>
-                                            <!-- Text on top -->
                                             <TextBlock Text="{Binding RowData.Row.VolumeProfile, Converter={StaticResource VolumeDisplayConverter}}" 
                                                       Foreground="White" FontSize="8"
                                                       HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
@@ -470,11 +478,34 @@
                         </dxg:GridColumn>
 
                         <!-- 6. Price Ladder Column (CENTER COLUMN) -->
-                        <dxg:GridColumn x:Name="PriceColumn" FieldName="Price" Header="" AllowResizing="False" Width="70">
+                        <dxg:GridColumn x:Name="PriceColumn" FieldName="Price" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[Price].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border Background="#FF2B3E50">
-                                        <TextBlock Foreground="White" FontWeight="Bold" FontSize="9"
+                                    <!-- Q2 zone tint (bid/ask background) + Q1 last-hit accent (left border) -->
+                                    <Border BorderThickness="3,0,0,0" BorderBrush="Transparent">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#FF2B3E50"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding RowData.Row.IsBidZone}" Value="True">
+                                                        <Setter Property="Background" Value="#1A4CAF50"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding RowData.Row.IsAskZone}" Value="True">
+                                                        <Setter Property="Background" Value="#1AF44336"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding RowData.Row.IsLastBidHit}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="#FF4CAF50"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding RowData.Row.IsLastAskHit}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="#FFF44336"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Foreground="White"
+                                                  FontWeight="{Binding DataContext.Settings.ColumnsByKey[Price].IsBold, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToFontWeightConverter}}"
+                                                  FontSize="9"
                                                   HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,5,0">
                                             <TextBlock.Text>
                                                 <MultiBinding Converter="{StaticResource DynamicPriceDisplayConverter}">
@@ -489,11 +520,12 @@
                         </dxg:GridColumn>
 
                         <!-- 7. Bid Snapshot Column (OUTER - delta/changes) -->
-                        <dxg:GridColumn x:Name="BidSnapshotColumn" FieldName="BidSnapshot" Header="" AllowResizing="False" Width="50">
+                        <dxg:GridColumn x:Name="BidSnapshotColumn" FieldName="BidSnapshot" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[BidSnapshot].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF3498DB">
-                                        <TextBlock Text="{Binding RowData.Row.BidSnapshot, Converter={StaticResource VolumeDisplayConverter}}" 
+                                        <TextBlock Text="{Binding RowData.Row.DisplayBidSnapshot, Converter={StaticResource VolumeDisplayConverter}}"
                                                   Foreground="White" FontSize="8"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
@@ -502,26 +534,29 @@
                         </dxg:GridColumn>
 
                         <!-- 8. Bid Depth Column (INNER - L2 depth) -->
-                        <dxg:GridColumn x:Name="BidDepthColumn" FieldName="BidDepth" Header="" AllowResizing="False" Width="50">
+                        <dxg:GridColumn x:Name="BidDepthColumn" FieldName="BidDepth" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[BidDepth].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border>
+                                    <Border Cursor="Hand" 
+                                            PreviewMouseLeftButtonDown="Depth_PreviewMouseLeftButtonDown"
+                                            MouseLeftButtonDown="BidDepth_MouseLeftButtonDown" 
+                                            MouseRightButtonDown="BidDepth_MouseRightButtonDown">
                                         <Border.Background>
                                             <MultiBinding Converter="{StaticResource TopOfBookBackgroundConverter}" ConverterParameter="bid">
                                                 <Binding Path="RowData.Row.IsTopBid"/>
                                                 <Binding Path="RowData.Row.IsTopAsk"/>
-                                                <Binding Path="RowData.Row.BidDepth"/>
+                                                <Binding Path="RowData.Row.DisplayBidDepth"/>
                                                 <Binding Path="RowData.Row.LastBidHitTicks"/>
                                                 <Binding Path="RowData.Row.LastAskHitTicks"/>
                                                 <Binding Path="DataContext.UiPulseTicks" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             </MultiBinding>
                                         </Border.Background>
                                         <Grid>
-                                            <!-- Volume Profile Bar -->
                                             <Border HorizontalAlignment="Right" VerticalAlignment="Stretch">
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource VolumeProfileBarConverter}">
-                                                        <Binding Path="RowData.Row.BidDepth"/>
+                                                        <Binding Path="RowData.Row.DisplayBidDepth"/>
                                                         <Binding Source="500"/>
                                                     </MultiBinding>
                                                 </Border.Width>
@@ -529,15 +564,14 @@
                                                     <MultiBinding Converter="{StaticResource TopOfBookBackgroundConverter}" ConverterParameter="bid-profile">
                                                         <Binding Path="RowData.Row.IsTopBid"/>
                                                         <Binding Path="RowData.Row.IsTopAsk"/>
-                                                        <Binding Path="RowData.Row.BidDepth"/>
+                                                        <Binding Path="RowData.Row.DisplayBidDepth"/>
                                                         <Binding Path="RowData.Row.LastBidHitTicks"/>
                                                         <Binding Path="RowData.Row.LastAskHitTicks"/>
                                                         <Binding Path="DataContext.UiPulseTicks" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                     </MultiBinding>
                                                 </Border.Background>
                                             </Border>
-                                            <!-- Text on top -->
-                                            <TextBlock Text="{Binding RowData.Row.BidDepth, Converter={StaticResource VolumeDisplayConverter}}" 
+                                            <TextBlock Text="{Binding RowData.Row.DisplayBidDepth, Converter={StaticResource VolumeDisplayConverter}}"
                                                        Foreground="White" FontSize="8"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
                                         </Grid>
@@ -547,7 +581,8 @@
                         </dxg:GridColumn>
 
                         <!-- 9. Last Trade at Bid Column -->
-                        <dxg:GridColumn x:Name="LastTradeAtBidColumn" FieldName="LastTradeAtBidBurst" Header="" AllowResizing="False" Width="40">
+                        <dxg:GridColumn x:Name="LastTradeAtBidColumn" FieldName="LastTradeAtBidBurst" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[LastTradeAtBid].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
@@ -560,7 +595,8 @@
                         </dxg:GridColumn>
 
                         <!-- 10. Last Trade at Ask Column -->
-                        <dxg:GridColumn x:Name="LastTradeAtAskColumn" FieldName="LastTradeAtAskBurst" Header="" AllowResizing="False" Width="40">
+                        <dxg:GridColumn x:Name="LastTradeAtAskColumn" FieldName="LastTradeAtAskBurst" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[LastTradeAtAsk].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
@@ -573,26 +609,29 @@
                         </dxg:GridColumn>
 
                         <!-- 11. Ask Depth Column (INNER - L2 depth values closest to price) -->
-                        <dxg:GridColumn x:Name="AskDepthColumn" FieldName="AskDepth" Header="" AllowResizing="False" Width="50">
+                        <dxg:GridColumn x:Name="AskDepthColumn" FieldName="AskDepth" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[AskDepth].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Border>
+                                    <Border Cursor="Hand" 
+                                            PreviewMouseLeftButtonDown="Depth_PreviewMouseLeftButtonDown"
+                                            MouseLeftButtonDown="AskDepth_MouseLeftButtonDown" 
+                                            MouseRightButtonDown="AskDepth_MouseRightButtonDown">
                                         <Border.Background>
                                             <MultiBinding Converter="{StaticResource TopOfBookBackgroundConverter}" ConverterParameter="ask">
                                                 <Binding Path="RowData.Row.IsTopBid"/>
                                                 <Binding Path="RowData.Row.IsTopAsk"/>
-                                                <Binding Path="RowData.Row.AskDepth"/>
+                                                <Binding Path="RowData.Row.DisplayAskDepth"/>
                                                 <Binding Path="RowData.Row.LastBidHitTicks"/>
                                                 <Binding Path="RowData.Row.LastAskHitTicks"/>
                                                 <Binding Path="DataContext.UiPulseTicks" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             </MultiBinding>
                                         </Border.Background>
                                         <Grid>
-                                            <!-- Volume Profile Bar -->
                                             <Border HorizontalAlignment="Right" VerticalAlignment="Stretch">
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource VolumeProfileBarConverter}">
-                                                        <Binding Path="RowData.Row.AskDepth"/>
+                                                        <Binding Path="RowData.Row.DisplayAskDepth"/>
                                                         <Binding Source="500"/>
                                                     </MultiBinding>
                                                 </Border.Width>
@@ -600,15 +639,14 @@
                                                     <MultiBinding Converter="{StaticResource TopOfBookBackgroundConverter}" ConverterParameter="ask-profile">
                                                         <Binding Path="RowData.Row.IsTopBid"/>
                                                         <Binding Path="RowData.Row.IsTopAsk"/>
-                                                        <Binding Path="RowData.Row.AskDepth"/>
+                                                        <Binding Path="RowData.Row.DisplayAskDepth"/>
                                                         <Binding Path="RowData.Row.LastBidHitTicks"/>
                                                         <Binding Path="RowData.Row.LastAskHitTicks"/>
                                                         <Binding Path="DataContext.UiPulseTicks" RelativeSource="{RelativeSource AncestorType=Window}"/>
                                                     </MultiBinding>
                                                 </Border.Background>
                                             </Border>
-                                            <!-- Text on top -->
-                                            <TextBlock Text="{Binding RowData.Row.AskDepth, Converter={StaticResource VolumeDisplayConverter}}" 
+                                            <TextBlock Text="{Binding RowData.Row.DisplayAskDepth, Converter={StaticResource VolumeDisplayConverter}}"
                                                       Foreground="White" FontSize="8"
                                                       HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
                                         </Grid>
@@ -618,11 +656,12 @@
                         </dxg:GridColumn>
 
                         <!-- 12. Ask Snapshot Column (OUTER - delta/changes) -->
-                        <dxg:GridColumn x:Name="AskSnapshotColumn" FieldName="AskSnapshot" Header="" AllowResizing="False" Width="50">
+                        <dxg:GridColumn x:Name="AskSnapshotColumn" FieldName="AskSnapshot" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[AskSnapshot].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FFE74C3C">
-                                        <TextBlock Text="{Binding RowData.Row.AskSnapshot, Converter={StaticResource VolumeDisplayConverter}}" 
+                                        <TextBlock Text="{Binding RowData.Row.DisplayAskSnapshot, Converter={StaticResource VolumeDisplayConverter}}"
                                                   Foreground="White" FontSize="8"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
@@ -631,12 +670,12 @@
                         </dxg:GridColumn>
 
                         <!-- 13. Ask Profile Column -->
-                        <dxg:GridColumn x:Name="AskProfileColumn" FieldName="AskProfile" Header="" AllowResizing="False" Width="45">
+                        <dxg:GridColumn x:Name="AskProfileColumn" FieldName="AskProfile" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[AskProfile].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
                                         <Grid>
-                                            <!-- Volume Profile Bar -->
                                             <Border Background="#FFE74C3C" HorizontalAlignment="Right" VerticalAlignment="Stretch">
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource VolumeProfileBarConverter}">
@@ -651,7 +690,6 @@
                                                     </MultiBinding>
                                                 </Border.Visibility>
                                             </Border>
-                                            <!-- Text on top -->
                                             <TextBlock Text="{Binding RowData.Row.AskProfile, Converter={StaticResource VolumeDisplayConverter}}" 
                                                       Foreground="White" FontSize="8"
                                                       HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
@@ -662,12 +700,12 @@
                         </dxg:GridColumn>
 
                         <!-- 14. Bid Profile Column -->
-                        <dxg:GridColumn x:Name="BidProfileColumn" FieldName="BidProfile" Header="" AllowResizing="False" Width="45">
+                        <dxg:GridColumn x:Name="BidProfileColumn" FieldName="BidProfile" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[BidProfile].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
                                         <Grid>
-                                            <!-- Volume Profile Bar -->
                                             <Border Background="#FF3498DB" HorizontalAlignment="Right" VerticalAlignment="Stretch">
                                                 <Border.Width>
                                                     <MultiBinding Converter="{StaticResource VolumeProfileBarConverter}">
@@ -682,7 +720,6 @@
                                                     </MultiBinding>
                                                 </Border.Visibility>
                                             </Border>
-                                            <!-- Text on top -->
                                             <TextBlock Text="{Binding RowData.Row.BidProfile, Converter={StaticResource VolumeDisplayConverter}}" 
                                                       Foreground="White" FontSize="8"
                                                       HorizontalAlignment="Center" VerticalAlignment="Center" Panel.ZIndex="1"/>
@@ -693,7 +730,8 @@
                         </dxg:GridColumn>
 
                         <!-- 15. Reserve Column -->
-                        <dxg:GridColumn x:Name="ReserveColumn" FieldName="Reserve" Header="" AllowResizing="False" Width="30">
+                        <dxg:GridColumn x:Name="ReserveColumn" FieldName="Reserve" Header="" AllowResizing="False"
+                                        Width="{Binding DataContext.Settings.ColumnsByKey[Reserve].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
                                     <Border Background="#FF1A252F">
@@ -704,7 +742,6 @@
                                 </DataTemplate>
                             </dxg:GridColumn.CellTemplate>
                         </dxg:GridColumn>
-                        
                     </dxg:GridControl.Columns>
                 </dxg:GridControl>
             </Grid>

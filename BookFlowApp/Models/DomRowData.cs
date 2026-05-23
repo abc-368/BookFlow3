@@ -61,6 +61,15 @@ namespace BookFlow.App.Models
         private long _lastBidHitTicks = 0;
         private long _lastAskHitTicks = 0;
 
+        // Q1: this row is the most recent market-sell (bid) / market-buy (ask) execution level.
+        private bool _isLastBidHit = false;
+        private bool _isLastAskHit = false;
+
+        // Q2/Q3: which side-zone this row falls in (price <= bestBid => bid zone, >= bestAsk => ask zone).
+        // Drives zone tinting and suppression of stale bid/ask data outside its zone.
+        private bool _isBidZone = false;
+        private bool _isAskZone = false;
+
         public decimal Price
         {
             get => _price;
@@ -221,34 +230,8 @@ namespace BookFlow.App.Models
             }
         }
 
-        public long VolumeProfile
-        {
-            get => _askProfile + _bidProfile; // Sum of Ask and Bid profiles
-            set
-            {
-                // For backward compatibility, if someone sets VolumeProfile directly,
-                // we distribute it proportionally between ask and bid profiles
-                var totalCurrent = _askProfile + _bidProfile;
-                if (totalCurrent > 0 && value != totalCurrent)
-                {
-                    var askRatio = (double)_askProfile / totalCurrent;
-                    var bidRatio = (double)_bidProfile / totalCurrent;
-                    
-                    _askProfile = (long)(value * askRatio);
-                    _bidProfile = (long)(value * bidRatio);
-                }
-                else if (totalCurrent == 0 && value > 0)
-                {
-                    // If no existing data, split equally
-                    _askProfile = value / 2;
-                    _bidProfile = value - _askProfile;
-                }
-                
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(AskProfile));
-                OnPropertyChanged(nameof(BidProfile));
-            }
-        }
+        // VolumeProfile is computed from profiles and should not be set externally
+        public long VolumeProfile => _askProfile + _bidProfile;
 
         public long BidSnapshot
         {
@@ -363,6 +346,7 @@ namespace BookFlow.App.Models
                 {
                     _askProfile = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(VolumeProfile));
                 }
             }
         }
@@ -376,6 +360,7 @@ namespace BookFlow.App.Models
                 {
                     _bidProfile = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(VolumeProfile));
                 }
             }
         }
@@ -608,6 +593,36 @@ namespace BookFlow.App.Models
             set { if (_lastAskHitTicks != value) { _lastAskHitTicks = value; OnPropertyChanged(); } }
         }
 
+        public bool IsLastBidHit
+        {
+            get => _isLastBidHit;
+            set { if (_isLastBidHit != value) { _isLastBidHit = value; OnPropertyChanged(); } }
+        }
+        public bool IsLastAskHit
+        {
+            get => _isLastAskHit;
+            set { if (_isLastAskHit != value) { _isLastAskHit = value; OnPropertyChanged(); } }
+        }
+
+        public bool IsBidZone
+        {
+            get => _isBidZone;
+            set { if (_isBidZone != value) { _isBidZone = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayBidDepth)); OnPropertyChanged(nameof(DisplayBidSnapshot)); } }
+        }
+        public bool IsAskZone
+        {
+            get => _isAskZone;
+            set { if (_isAskZone != value) { _isAskZone = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayAskDepth)); OnPropertyChanged(nameof(DisplayAskSnapshot)); } }
+        }
+
+        // Q3: zone-suppressed display values — bid depth/snapshot only render in the bid zone,
+        // ask depth/snapshot only in the ask zone. Stale data outside its zone is never shown,
+        // regardless of book state. Profiles (cumulative traded volume) are NOT suppressed.
+        public long DisplayBidDepth => _isBidZone ? _bidDepth : 0;
+        public long DisplayAskDepth => _isAskZone ? _askDepth : 0;
+        public long DisplayBidSnapshot => _isBidZone ? _bidSnapshot : 0;
+        public long DisplayAskSnapshot => _isAskZone ? _askSnapshot : 0;
+
         #endregion
 
         // Computed properties for display
@@ -642,14 +657,13 @@ namespace BookFlow.App.Models
                 AskCount = priceLevel.AskCount,
                 IsTopOfBook = priceLevel.IsTopOfBook,
                 
-                // Enhanced properties from PriceLevel
-                VolumeProfile = priceLevel.VolumeProfileVolume,
-                BidDepth = priceLevel.BidVolume,  // Current bid volume = depth
-                AskDepth = priceLevel.AskVolume,  // Current ask volume = depth
+                // Enhanced properties from PriceLevel (profiles start from engine's cumulative values)
+                BidDepth = priceLevel.BidVolume,
+                AskDepth = priceLevel.AskVolume,
                 LastTradeAtBid = priceLevel.BidSideTradedVolume,
                 LastTradeAtAsk = priceLevel.AskSideTradedVolume,
-                LastTradeAtBidBurst = priceLevel.BidSideTradedVolume, // Market sells hitting bids
-                LastTradeAtAskBurst = priceLevel.AskSideTradedVolume, // Market buys hitting asks
+                LastTradeAtBidBurst = priceLevel.BidSideTradedVolume,
+                LastTradeAtAskBurst = priceLevel.AskSideTradedVolume,
                 OpenPositionPnL = priceLevel.UnrealizedPnL,
                 BidProfile = priceLevel.BidSideTradedVolume,
                 AskProfile = priceLevel.AskSideTradedVolume,
@@ -661,14 +675,14 @@ namespace BookFlow.App.Models
                 MyAskOrderCount = priceLevel.MyAskOrderCount,
                 
                 // State flags
-                IsTopBid = false, // Will be set correctly by DomViewModel based on best bid price
-                IsTopAsk = false, // Will be set correctly by DomViewModel based on best ask price
+                IsTopBid = false,
+                IsTopAsk = false,
                 HasL1Update = priceLevel.HasRecentActivity,
                 
                 // Initialize placeholders for future enhancement
                 Observations = "",
-                BidOrdersInfo = "", // Only show when user has working orders at this price
-                AskOrdersInfo = "", // Only show when user has working orders at this price
+                BidOrdersInfo = "",
+                AskOrdersInfo = "",
                 BidOrdersFullText = priceLevel.BidCount > 0 ? $"{priceLevel.BidCount} orders at {priceLevel.Price:F2}" : "",
                 AskOrdersFullText = priceLevel.AskCount > 0 ? $"{priceLevel.AskCount} orders at {priceLevel.Price:F2}" : "",
                 Reserve = ""
@@ -678,6 +692,27 @@ namespace BookFlow.App.Models
         // Method to update from PriceLevel
         public void UpdateFromPriceLevel(BookFlow.Shared.Contracts.PriceLevel priceLevel)
         {
+            // Batch: suppress the ~20 per-property notifications this method fires and
+            // emit a single "all properties" change at the end. On a 15-column grid under
+            // high-frequency data this collapses 20 binding evaluations + dispatcher hops
+            // into one row refresh, eliminating the per-tick OnPropertyChanged storm.
+            _suppressNotify = true;
+            try
+            {
+                UpdateFromPriceLevelCore(priceLevel);
+            }
+            finally
+            {
+                _suppressNotify = false;
+            }
+            // null/empty property name = "all properties changed"; WPF + DevExpress re-read the row once.
+            PropertyChanged?.Invoke(this, AllPropertiesChanged);
+        }
+
+        private static readonly PropertyChangedEventArgs AllPropertiesChanged = new PropertyChangedEventArgs(string.Empty);
+
+        private void UpdateFromPriceLevelCore(BookFlow.Shared.Contracts.PriceLevel priceLevel)
+        {
             // Basic properties
             Price = priceLevel.Price;
             BidVolume = priceLevel.BidVolume;
@@ -686,11 +721,8 @@ namespace BookFlow.App.Models
             AskCount = priceLevel.AskCount;
             IsTopOfBook = priceLevel.IsTopOfBook;
 
-            // Reflect VolumeProfileVolume from engine
-            if (priceLevel.VolumeProfileVolume != (long)VolumeProfile)
-            {
-                VolumeProfile = priceLevel.VolumeProfileVolume;
-            }
+            // Do NOT overwrite Ask/Bid profiles from engine total; they are cumulative
+            // Only add when engine cumulative increases
 
             // Detect recent side-specific trade hits for orange highlight
             if (priceLevel.BidSideTradedVolume > _lastTradeAtBidBurst)
@@ -789,8 +821,12 @@ namespace BookFlow.App.Models
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        // When true, individual setters skip raising; the batch caller raises one notification.
+        private bool _suppressNotify;
+
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
+            if (_suppressNotify) return;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
