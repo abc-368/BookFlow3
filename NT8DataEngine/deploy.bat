@@ -43,29 +43,33 @@ echo Copying assemblies...
 for %%A in (NT8DataEngine.dll NT8DataEngine.pdb) do (
   if exist "%NT8_OUT%\%%A" (
     echo   Copy %%A
-    copy /Y "%NT8_OUT%\%%A" "%TARGET_DIR%\" >nul || (echo     FAILED copying %%A & exit /b 1)
+    copy /Y "%NT8_OUT%\%%A" "%TARGET_DIR%\" >nul
+    if errorlevel 1 exit /b 1
   )
 )
 for %%A in (BookFlow.Shared.dll BookFlow.Shared.pdb) do (
   if exist "%SHARED_OUT%\%%A" (
     echo   Copy %%A
-    copy /Y "%SHARED_OUT%\%%A" "%TARGET_DIR%\" >nul || (echo     FAILED copying %%A & exit /b 1)
+    copy /Y "%SHARED_OUT%\%%A" "%TARGET_DIR%\" >nul
+    if errorlevel 1 exit /b 1
   ) else (
-    rem In case the shared dll was copied to the NT8 output by mismatch (should not normally)
+    rem In case the shared dll was copied to the NT8 output by mismatch
     if exist "%NT8_OUT%\%%A" (
-      echo   Copy %%A (from NT8 output)
-      copy /Y "%NT8_OUT%\%%A" "%TARGET_DIR%\" >nul || (echo     FAILED copying %%A & exit /b 1)
+      echo   Copy %%A from NT8 output
+      copy /Y "%NT8_OUT%\%%A" "%TARGET_DIR%\" >nul
+      if errorlevel 1 exit /b 1
     )
   )
 )
 
 rem Runtime dependencies NT8 does not ship. These land in the NT8 build output via NuGet.
 rem System.ServiceModel.Primitives is the net48 facade that forwards WCF contract
-rem attributes ([ServiceContract]/[DataContract]) to the in-box framework WCF assemblies.
+rem attributes ServiceContract/DataContract to the in-box framework WCF assemblies.
 for %%A in (System.ServiceModel.Primitives.dll) do (
   if exist "%NT8_OUT%\%%A" (
-    echo   Copy %%A (runtime dependency)
-    copy /Y "%NT8_OUT%\%%A" "%TARGET_DIR%\" >nul || (echo     FAILED copying %%A & exit /b 1)
+    echo   Copy %%A - runtime dependency
+    copy /Y "%NT8_OUT%\%%A" "%TARGET_DIR%\" >nul
+    if errorlevel 1 exit /b 1
   ) else (
     echo   WARNING: %%A not found in NT8 output - WCF contracts may fail to load.
   )
@@ -75,10 +79,10 @@ echo.
 echo Verifying deployed files...
 for %%A in (NT8DataEngine.dll BookFlow.Shared.dll System.ServiceModel.Primitives.dll) do (
   if not exist "%TARGET_DIR%\%%A" (
-    echo   MISSING: %%A (deployment incomplete)
+    echo   MISSING: %%A - deployment incomplete
     set DEPLOY_ERROR=1
   ) else (
-    for %%F in ("%TARGET_DIR%\%%A") do echo   Present: %%~nF (%%~zF bytes)
+    for %%F in ("%TARGET_DIR%\%%A") do echo   Present: %%~nF - %%~zF bytes
   )
 )
 if defined DEPLOY_ERROR (
