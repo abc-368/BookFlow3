@@ -25,7 +25,6 @@ namespace NinjaTrader.NinjaScript.AddOns
 
         private readonly Dictionary<string, byte> _instrumentToTickerId = new Dictionary<string, byte>();
         private readonly Dictionary<byte, string> _tickerIdToInfo = new Dictionary<byte, string>();
-        private readonly Stack<byte> _availableTickerIds = new Stack<byte>();
         private int _nextTickerIdInt = 1; // widened to int to detect byte overflow before assignment
         private readonly object _tickerLock = new object();
 
@@ -174,7 +173,6 @@ namespace NinjaTrader.NinjaScript.AddOns
             {
                 _instrumentToTickerId.Clear();
                 _tickerIdToInfo.Clear();
-                _availableTickerIds.Clear();
                 _nextTickerIdInt = 1;
             }
             try { _serverBooks.Clear(); } catch { }
@@ -271,22 +269,14 @@ namespace NinjaTrader.NinjaScript.AddOns
             {
                 byte existing;
                 if (_instrumentToTickerId.TryGetValue(instrumentName, out existing))
-                    return existing;
+                    return existing; // stable: an instrument keeps the same id for the whole session
 
-                byte id;
-                if (_availableTickerIds.Count > 0)
+                if (_nextTickerIdInt > byte.MaxValue)
                 {
-                    id = _availableTickerIds.Pop();
+                    LogMsg(string.Format("ERROR: Ticker ID space exhausted (max {0}); cannot register '{1}'", byte.MaxValue, instrumentName));
+                    return 0;
                 }
-                else
-                {
-                    if (_nextTickerIdInt > byte.MaxValue)
-                    {
-                        LogMsg(string.Format("ERROR: Ticker ID space exhausted (max {0}); cannot register '{1}'", byte.MaxValue, instrumentName));
-                        return 0;
-                    }
-                    id = (byte)_nextTickerIdInt++;
-                }
+                byte id = (byte)_nextTickerIdInt++;
 
                 _instrumentToTickerId[instrumentName] = id;
                 _tickerIdToInfo[id] = string.Format("{0}|{1}|{2}", instrumentName, tickSize, pointValue);
@@ -296,22 +286,14 @@ namespace NinjaTrader.NinjaScript.AddOns
         }
 
         /// <summary>
-        /// Releases a ticker ID back to the free pool. Called by BookFlowIndi.OnStateChange
-        /// when the indicator terminates. Safe to call after shutdown (no-op).
+        /// Called by BookFlowIndi.OnStateChange when an indicator terminates. The instrument→id
+        /// mapping is intentionally KEPT for the rest of the session: ids are never recycled, so a
+        /// client window holding this id can never start receiving a different instrument's data
+        /// (the cause of the ES-window-showing-NQ bug), and a reopened chart reuses the same id.
         /// </summary>
         public void UnregisterTicker(byte tickerId)
         {
-            if (tickerId == 0 || _disposed) return;
-            lock (_tickerLock)
-            {
-                string info;
-                if (!_tickerIdToInfo.TryGetValue(tickerId, out info)) return;
-                var instrumentName = info.Split('|')[0];
-                _instrumentToTickerId.Remove(instrumentName);
-                _tickerIdToInfo.Remove(tickerId);
-                _availableTickerIds.Push(tickerId);
-                LogMsg(string.Format("Unregistered ticker {0} ('{1}'); free pool size = {2}", tickerId, instrumentName, _availableTickerIds.Count));
-            }
+            // Intentionally a no-op for the id mapping (ids are stable for the session).
         }
 
         #region NT8 Core Event Handlers

@@ -70,6 +70,11 @@ namespace BookFlow.App.Models
         private bool _isBidZone = false;
         private bool _isAskZone = false;
 
+        // Microstructure: a transient glyph (e.g. "S" spoof, "I" iceberg) shown at this level,
+        // cleared by the view model after a short dwell.
+        private string _signalGlyph = "";
+        private long _signalTicks = 0;
+
         public decimal Price
         {
             get => _price;
@@ -613,6 +618,17 @@ namespace BookFlow.App.Models
         {
             get => _isAskZone;
             set { if (_isAskZone != value) { _isAskZone = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayAskDepth)); OnPropertyChanged(nameof(DisplayAskSnapshot)); } }
+        }
+
+        public string SignalGlyph
+        {
+            get => _signalGlyph;
+            set { if (_signalGlyph != value) { _signalGlyph = value; OnPropertyChanged(); } }
+        }
+        public long SignalTicks
+        {
+            get => _signalTicks;
+            set { if (_signalTicks != value) { _signalTicks = value; OnPropertyChanged(); } }
         }
 
         // Q3: zone-suppressed display values — bid depth/snapshot only render in the bid zone,

@@ -10,6 +10,7 @@ namespace BookFlow.App.Views
     public partial class ControllerWindow : Window
     {
         public ControllerViewModel ViewModel { get; }
+        private LogViewerWindow? _logViewer;
 
         public ControllerWindow()
         {
@@ -40,6 +41,11 @@ namespace BookFlow.App.Views
             }
         }
 
+        private async void BtnRefreshInstruments_Click(object sender, RoutedEventArgs e)
+        {
+            await ViewModel.RefreshInstrumentsAsync();
+        }
+
         private void BtnLaunchDom_Click(object sender, RoutedEventArgs e)
         {
             System.Console.WriteLine($"🎯🎯🎯 [CONTROLLER WINDOW] BtnLaunchDom_Click CALLED! 🎯🎯🎯");
@@ -47,30 +53,25 @@ namespace BookFlow.App.Views
             System.Console.WriteLine($"🎯🎯🎯 [CONTROLLER WINDOW] ViewModel.LaunchSelectedInstrumentDom() completed! 🎯🎯🎯");
         }
 
-        private void BtnClearLog_Click(object sender, RoutedEventArgs e)
+        private void BtnSystemLog_Click(object sender, RoutedEventArgs e)
         {
-            ViewModel.ClearLog();
-        }
-
-        private void CopyLog_Click(object sender, RoutedEventArgs e)
-        {
-            if (txtSystemLog.SelectedText.Length > 0)
+            if (_logViewer == null || !_logViewer.IsVisible)
             {
-                System.Windows.Clipboard.SetText(txtSystemLog.SelectedText);
+                _logViewer = new LogViewerWindow(ViewModel) { Owner = this };
+                _logViewer.Left = this.Left + this.Width + 10;
+                _logViewer.Top = this.Top;
+                _logViewer.Closed += (s, args) => _logViewer = null;
+                _logViewer.Show();
             }
             else
             {
-                System.Windows.Clipboard.SetText(txtSystemLog.Text);
+                _logViewer.Activate();
             }
-        }
-
-        private void SelectAllLog_Click(object sender, RoutedEventArgs e)
-        {
-            txtSystemLog.SelectAll();
         }
 
         protected override void OnClosed(EventArgs e)
         {
+            _logViewer?.Close();
             ViewModel?.Dispose();
             base.OnClosed(e);
         }

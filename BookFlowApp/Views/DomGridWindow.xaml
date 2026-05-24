@@ -177,11 +177,18 @@
                  </ToggleButton>
                  
                  <!-- Clear Button -->
-                 <Button x:Name="ClearButton" Width="28" Height="22" Margin="1,5" 
+                 <Button x:Name="ClearButton" Width="28" Height="22" Margin="1,5"
                          Style="{StaticResource SettingsButtonStyle}" Click="ClearButton_Click">
                      <TextBlock Text="C" Foreground="White" FontSize="12" FontWeight="Bold"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                  </Button>
+
+                 <!-- Order-flow signals feed toggle (shows/hides the docked panel beside the ladder) -->
+                 <ToggleButton x:Name="SignalsButton" Width="28" Height="22" Margin="1,5"
+                               Style="{StaticResource SettingsToggleButtonStyle}">
+                     <TextBlock Text="&#931;" Foreground="White" FontSize="12" FontWeight="Bold"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                 </ToggleButton>
                 </StackPanel>
                 
                 <!-- Right-aligned Settings Flyout Button -->
@@ -263,8 +270,14 @@
             </Grid>
         </Border>
         
-        <!-- DOM Grid -->
-        <Border Grid.Row="2" Background="#FF1A252F" BorderBrush="#FF4A90E2" 
+        <!-- DOM Grid + adjacent persistent signals panel -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="#FF1A252F" BorderBrush="#FF4A90E2"
                 BorderThickness="1" Margin="0" VerticalAlignment="Stretch">
             <Grid>
                 <Grid.RowDefinitions>
@@ -374,9 +387,10 @@
                                         Width="{Binding DataContext.Settings.ColumnsByKey[Observations].Width, RelativeSource={RelativeSource AncestorType=Window}}">
                             <dxg:GridColumn.CellTemplate>
                                 <DataTemplate>
+                                    <!-- Microstructure glyph: S=spoof, I=iceberg (transient, set by the VM). -->
                                     <Border Background="#FF1A252F">
-                                        <TextBlock Text="{Binding RowData.Row.Observations}" 
-                                                  Foreground="White" FontSize="8"
+                                        <TextBlock Text="{Binding RowData.Row.SignalGlyph}"
+                                                  Foreground="#FFFFC107" FontSize="9" FontWeight="Bold"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                 </DataTemplate>
@@ -746,7 +760,46 @@
                 </dxg:GridControl>
             </Grid>
         </Border>
-        
+
+        <!-- Persistent order-flow signals panel, docked beside the ladder (toggled by the Sigma button) -->
+        <Border Grid.Column="1" x:Name="SignalsPanel" Width="320" Margin="2,0,0,0"
+                VerticalAlignment="Stretch"
+                Background="#FF1E2A3A" BorderBrush="#FF4A90E2" BorderThickness="1"
+                Visibility="{Binding IsChecked, ElementName=SignalsButton, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <DockPanel Margin="6">
+                <TextBlock DockPanel.Dock="Top" Text="Order-Flow Signals" Foreground="White" FontWeight="Bold" FontSize="11" Margin="2,0,0,4"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding RecentSignals}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="52"/>
+                                        <ColumnDefinition Width="14"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding TimeText}" Foreground="#FF95A5A6" FontSize="9" VerticalAlignment="Center"/>
+                                    <!-- Predicted-direction arrow; bold when the signal is strong. -->
+                                    <TextBlock Grid.Column="1" Text="{Binding DirectionArrow}" FontSize="11" VerticalAlignment="Center"
+                                               Foreground="{Binding ArrowColorHex, Converter={StaticResource HexToBrushConverter}}"
+                                               FontWeight="{Binding IsStrong, Converter={StaticResource BooleanToFontWeightConverter}}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Label}" FontSize="9" VerticalAlignment="Center" Margin="3,0,0,0"
+                                               Foreground="{Binding ColorHex, Converter={StaticResource HexToBrushConverter}}"
+                                               FontWeight="{Binding IsStrong, Converter={StaticResource BooleanToFontWeightConverter}}"/>
+                                    <!-- Prediction-power meter (type hit-rate known at print time); tooltip has the rate + sample count. -->
+                                    <TextBlock Grid.Column="3" Text="{Binding StrengthMeter}" FontFamily="Consolas" FontSize="9"
+                                               VerticalAlignment="Center" Margin="6,0,2,0" ToolTip="{Binding StrengthTooltip}"
+                                               Foreground="{Binding StrengthColorHex, Converter={StaticResource HexToBrushConverter}}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+        </Grid>
+
         <!-- Status Bar -->
         <Border Grid.Row="3" Background="#FF1E2A3A" BorderBrush="#FF4A90E2" 
                 BorderThickness="0,1,0,0" Height="30" Padding="10,5">

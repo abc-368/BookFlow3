@@ -146,16 +146,39 @@ However, a deep audit of the actual C# code inside `BookFlowApp` reveals several
 
 ---
 
-## 3. Actionable Code Enhancements (Refactoring Plan)
+## 3. Actionable Code Enhancements (Completed)
 
-We suggest the following priority modifications:
+The following priority refactoring steps have been fully implemented and verified:
 
-### Step 1: Fix `DefaultPointValue` in `DomViewModel.cs`
-Update all PnL formulas in the client View Model to refer to the injected engine's `PointValue` property rather than the hardcoded `DefaultPointValue` constant.
+* **[x] Fix `DefaultPointValue` in `DomViewModel.cs`**: Swapped out the hardcoded `DefaultPointValue` constant for dynamic references to `_domEngine.PointValue`.
+* **[x] Implement Range Collection Updates**: Introduced `RangeObservableCollection<T>` in WPF to batch row modifications, replacing the $O(N)$ clear/add loop and reducing visual tree layout passes.
+* **[x] Optimize Search and Cloning inside `DomEngine.cs`**:
+  1. Re-wrote `UpdateLastTrade` to perform $O(1)$ tick-alignment and $O(\log N)$ direct dictionary lookups instead of $O(N)$ linear key iterations.
+  2. Optimized snapshot range copying to extract only visible price levels under the `_syncLock` rather than performing `ToDictionary()` on the entire dictionary.
 
-### Step 2: Implement Range Collection Updates
-Swap out `ObservableCollection<DomRowData>` in the view model for a range-based collection subclass. Replace the `Clear()` and `Add()` loop in `BuildFullLadder` with a single `ReplaceRange()` call.
+---
 
-### Step 3: Optimize Search and Cloning inside `DomEngine.cs`
-1. Re-write the key search inside `UpdateLastTrade` using `AlignToTick(price)` to avoid linear key enumeration.
-2. Refactor snapshot range copies: extract keys within the visible bounds from the `SortedDictionary` directly inside the lock instead of performing `ToDictionary()` on the entire collection.
+## 4. Enhancement Plan Sanity Check & Discrepancies
+
+This section sanity checks all the entries in [CLAUDE-ENHANCEMENTS.md](file:///c:/Users/master/source/repos/BookFlow5/CLAUDE-ENHANCEMENTS.md) against the actual implementation details of the codebase.
+
+### 4.1 Serialization choice (DataContractSerializer vs. protobuf-net)
+* **Enhancement Plan Claim**: Uses `protobuf-net` with `[ProtoContract]` / `[ProtoMember]` attributes for WCF service serialization.
+* **Implementation Detail**: Uses WCF's built-in `DataContractSerializer` with standard `[DataContract]` / `[DataMember]` attributes.
+* **Assessment**: This is a highly pragmatic adjustment. By relying on native WCF serialization, the system avoids third-party library dependencies (`protobuf-net.dll`) that can cause assembly loading issues in NinjaTrader 8's runtime dynamic compilation environment. Both host (.NET Framework 4.8) and client (.NET 9.0) communicate warning-free with zero codegen.
+
+### 4.2 IPC Queueing (ConcurrentQueue vs. System.Threading.Channels)
+* **Enhancement Plan Claim**: Uses `System.Threading.Channels.Channel<UnifiedMarketDataMessage>` inside the AddOn for producer coalescing.
+* **Implementation Detail**: Uses `ConcurrentQueue<UnifiedMarketDataMessage>` and `AutoResetEvent` inside `BookFlowAddOn.cs`.
+* **Assessment**: A very sound compatibility choice. `System.Threading.Channels` requires adding an external NuGet package that is not native to `.NET Framework 4.8`. Using core BCL collections (`ConcurrentQueue`, `AutoResetEvent`) avoids extra assembly deployment hazards in NinjaTrader.
+
+### 4.3 Portfolio State Tracker (Direct AddOn Integration vs. Separate Class)
+* **Enhancement Plan Claim**: Lists `NT8DataEngine/Service/PortfolioStateTracker.cs` as a new component.
+* **Implementation Detail**: Portfolio tracking state is integrated directly inside `BookFlowAddOn.cs` (`_portfolioVersion`, `BuildPortfolioSnapshot()`, etc.).
+* **Assessment**: This simplifies the AddOn architecture by avoiding extra files that need to be dynamically compiled by NinjaTrader. It reduces overhead when assembling the snapshot since it has direct access to NT8 CBI objects.
+
+### 4.4 Ticker ID Recycling (Recycling Active vs. Monotonic Stable IDs)
+* **Enhancement Plan Claim**: Section 11.2 states `RegisterTicker` assigns non-recycled IDs and `UnregisterTicker` is a no-op to prevent window re-pointing bugs.
+* **Implementation Detail**: In `BookFlowAddOn.cs`, `UnregisterTicker` is NOT a no-op; it actively removes mappings and pushes ticker IDs back onto `_availableTickerIds` for recycling.
+* **Critique & Warning**: This represents a potential regression. If ticker IDs are recycled during a session, active client-side DOM windows could be re-pointed to different instruments. Although the defensive check in `SeedFromSnapshot` logs a warning upon instrument mismatch, raw tick ingestion would still stream the new instrument into the old window.
+* **Recommendation**: Refactor `UnregisterTicker` to be a no-op and make ID generation purely session-monotonic. Since ticker IDs are bytes (0 to 255), this easily covers typical session instrument limits without exhausting the address space.

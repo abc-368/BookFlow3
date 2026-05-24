@@ -148,6 +148,31 @@ namespace BookFlow.App.ViewModels
             catch (Exception ex) { LogMessage($"Connection error: {ex.Message}"); }
         }
 
+        /// <summary>
+        /// Re-pulls the instrument→ticker dictionary without disconnecting or closing any open
+        /// DOM windows. Picks up instruments whose indicators were dropped after connect, and
+        /// preserves the current selection by name. (Ticker ids are stable for the session, so
+        /// this never re-points an open window.)
+        /// </summary>
+        public async Task RefreshInstrumentsAsync()
+        {
+            if (!IsConnected || _sharedDataFeed == null) return;
+            try
+            {
+                var prevName = _selectedInstrument?.InstrumentName;
+                var instruments = await _sharedDataFeed.GetAvailableInstrumentsAsync();
+                AvailableInstruments.Clear();
+                foreach (var inst in instruments) AvailableInstruments.Add(inst);
+                SelectedInstrument = (!string.IsNullOrEmpty(prevName)
+                    ? AvailableInstruments.FirstOrDefault(i => i.InstrumentName == prevName)
+                    : null) ?? AvailableInstruments.FirstOrDefault();
+                OnPropertyChanged(nameof(HasInstruments));
+                OnPropertyChanged(nameof(InstrumentCount));
+                LogMessage($"Refreshed instruments: {AvailableInstruments.Count}");
+            }
+            catch (Exception ex) { LogMessage($"Refresh instruments error: {ex.Message}"); }
+        }
+
         private void OnDataChannelStatusChanged(object? sender, bool isConnected)
         {
             // Update UI-friendly properties

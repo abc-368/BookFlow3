@@ -259,3 +259,71 @@ Here is our assessment and direct feedback on the open questions:
 * **WCF Fault Handling & Reconnects**:
   * Duplex Named Pipes can enter a faulted state if connection is lost. The client's `NT8DirectDataFeed` must implement an active heartbeat watchdog that actively monitors connection status and recreates the `DuplexChannelFactory` when a timeout is detected.
 
+---
+
+## 11. Post-Increment work — order-flow analytics, DOM UI, and signal reliability
+
+Everything below was built after Increments 1–5 landed. It sits on top of the hybrid IPC core (MMF ring + WCF duplex + versioned portfolio) and does **not** touch the hot tick path: all analysis runs on an off-path 4 Hz timer, and the UI stays pull-based.
+
+### 11.1 Snapshot-on-connect handshake (Increment 2b)
+- On `StartAsync`, the engine buffers live ticks, requests an authoritative L2 snapshot (`RequestDomSnapshotAsync`), seeds both books, then drains the buffer discarding any tick whose global sequence (`Reserved1`) is already in the snapshot, and flips to live — no lost/duplicated ticks across the seed window.
+- `ServerBookRegistry` / `BookFlowServiceImpl.RequestDomSnapshot` maintain the per-ticker server book; the global sequence is stamped in `RingWriterLoop`.
+- Files: `DomEngine.SeedFromSnapshot`, `NT8DataEngine/Service/ServerBookRegistry.cs`, `BookFlowServiceImpl.cs`.
+
+### 11.2 Stable ticker IDs — instrument-picker fix
+- **Bug:** ticker IDs were recycled via a free list, so dropping an indicator and adding another re-pointed an open window (an ES window showed NQ prices).
+- **Fix:** `RegisterTicker` assigns monotonic, non-recycled IDs with dedup; `UnregisterTicker` is a no-op for the mapping. IDs are stable for the session, so an open DOM is never re-pointed.
+- Defensive guard: `SeedFromSnapshot` logs loudly if `snapshot.InstrumentName` ≠ the engine's expected instrument (catches any stale mapping).
+- Files: `NT8DataEngine/NinjaTrader/BookFlowAddOn.cs`.
+
+### 11.3 Order-flow microstructure analytics (the "Q5" engine)
+- `L2AnalyticsWindow` — a 512-slot tick-indexed ring (`priceTicks % 512`) accruing per-level add / cancel / trade volume (split by aggressor side) in the vicinity of the market. Fed O(1) per event from the data thread under `_syncLock` (`OnDepth`, `OnTrade`); `GetVicinity(center, radiusTicks)` returns a high→low slice.
+- `MicrostructureDetector` — **stateless**; takes two vicinity snapshots an interval apart and works on per-level deltas (diff-of-cumulative-counters, with reset/aliasing guards). Detects:
+  - **Spoofing/layering** — heavy churn (added+canceled) with little traded and cancels dominating adds.
+  - **Iceberg/absorption** — traded far more than the displayed size dropped (hidden replenishment).
+  - **Liquidity withdrawal** — one-sided cancel-not-traded summed within `WithdrawalRadiusTicks` of the touch.
+  - **Aggression imbalance** — directional skew of aggressive (ask-lifting vs bid-hitting) volume.
+- Honest scope is documented in-code: NT8 L2 is aggregated depth (no per-order IDs / queue position), so these are heuristics, not classifications.
+- Driven from `DomEngine.OnMicrostructureTick` (4 Hz, after a warm-up), published on the non-conflated `MicrostructureSignals` observable.
+- Files: `SharedLibrary.Standard/Analytics/L2AnalyticsWindow.cs`, `MicrostructureDetector.cs`, `DomEngine.OnMicrostructureTick`.
+
+### 11.4 Per-instrument thresholds wired to `DomSettings`
+- All detector thresholds live on `DomSettings` (per-instrument; volume scales differ across ES/NQ/CL): `EnableMicrostructureSignals`, `SpoofMinChurn`, `SpoofMaxTradedFraction`, `IcebergMinRefill`, `WithdrawalMinSize`, `WithdrawalRadiusTicks`, `AggressionMinVolume`, `AggressionMinImbalance` — each validated, with `ResetToDefaults`.
+- `OnMicrostructureTick` syncs them onto the detector each tick, so edits apply live without restart.
+
+### 11.5 DOM-UI enhancements (Q1–Q5)
+- **Q1 last-hit accent** — Price cell shows a colored left border on the last bid/ask execution level.
+- **Q2 zone tint** — bid/ask zones tinted on the Price cell via `IsBidZone`/`IsAskZone` DataTriggers.
+- **Q3 crossed-market suppression at the display layer** — `DisplayBidDepth`/`DisplayAskDepth`/`DisplayBidSnapshot`/`DisplayAskSnapshot` gate stray depth in the spread. (Engine-level crossed pruning was deliberately **not** added — best-price resolution strands the level, and which leg is stale is ambiguous from depth alone.)
+- **Q5 observations glyph** — transient `S`/`I` glyph on the matching ladder row, cleared by the 60 fps tick.
+- **DOM "Center" fix** — `ScrollToTopOfBook` targeted the bid/ask mid but parked it 5 rows below center (a hard-coded `-5`); removed so top-of-book is dead-center.
+- Files: `DomGridWindow.xaml(.cs)`, `Models/DomRowData.cs`, `DomViewModel`.
+
+### 11.6 Signal feed — docked panel + readable labels + direction
+- **Docked panel** beside the ladder (toggled by the `Σ` button), stretching to the ladder height — replaced the old popup; append-only feed capped at 60 entries.
+- **Plain-English labels** carrying magnitude + price: e.g. `Spoof bid +120/-115 @ 5000.00`, `Iceberg ask 50 hidden @ 5000.25`, `Bid pulled 76 (≤5t of 5000.00)`, `Buy aggression 60 vs 5`. (Withdrawal size is a vicinity aggregate over the detection window — clarified in the label so it isn't mistaken for a single-level depth.)
+- **Direction arrows** — ▲ green (up) / ▼ red (down) / • gray, **bold when the signal is strong** (magnitude ≥ 2× threshold, or imbalance ≥ 0.85). Mapping documented in code (e.g. spoof bid → ▼ since fake pressure reverses when pulled).
+- Files: `Models/SignalFeedItem.cs`, `DomViewModel.OnSignal`, `DomGridWindow.xaml`.
+
+### 11.7 Signal reliability meter — prediction power, scored by price level (not time)
+- `SignalReliabilityTracker` (in `SharedLibrary.Standard/Analytics`) forward-evaluates each emitted signal by **price-level barriers**: target = anchor ± `PredictionEvalTicks` in the predicted direction, stop = the same against. Reaching target before stop = WIN, stop first = LOSS (a first-passage / triple-barrier test).
+- Resolved outcomes accumulate a **per-type hit-rate** (Beta(2,2)-smoothed). A new feed line is stamped with that type's hit-rate **as known at print time** — past lines are never revised, so there is no look-ahead bias and the UI stays append-only.
+- **Visual:** a right-aligned 5-segment meter `▰▰▰▱▱`, gray while "learning" (< `ReliabilityMinSamples` resolved), then red < 45% → amber → green > 60%; tooltip shows the rate and sample count.
+- **Performance:** `RegisterSignal` / `OnPriceSample` / `GetReliability` are O(pending)/O(1), run inside the existing 4 Hz tick. Pending list capped at 64 (drop-oldest); reset on `ClearAllData`. The L1/L2 path, book updates, and 60 fps render loop are untouched.
+- New tunables on `DomSettings`: `PredictionEvalTicks` (default 4), `ReliabilityMinSamples` (default 5).
+- Files: `SignalReliabilityTracker.cs`, `MicrostructureDetector.cs` (signal carries `ReliabilityBars/Ratio/Samples/Learning`), `DomEngine.OnMicrostructureTick`, `SignalFeedItem.cs`, `DomGridWindow.xaml`.
+
+### 11.8 Professional DOM settings dialog
+- `GridSettingsWindow` rebuilt with a cohesive dark theme: a **Columns** tab as a proper table (named columns + width / font size / bold / font color), and an **Order-Flow Signals** tab grouping the thresholds by detector (Spoofing / Iceberg / Withdrawal / Aggression) with an enable toggle.
+
+### 11.9 Controller — instrument refresh + detachable log
+- **Refresh instruments** (`RefreshInstrumentsAsync`) re-pulls the instrument→ticker map without disconnecting or closing open DOMs, preserving the selection by name (safe because ticker IDs are stable).
+- **System Log moved to a side window** — the controller now sizes to content (no more truncated "System Log"); a **System Log** button opens a detachable `LogViewerWindow` sharing the controller's view model (Auto-Scroll, Copy, Select All, Clear).
+- Files: `ControllerViewModel.cs`, `ControllerWindow.xaml(.cs)`, `LogViewerWindow.xaml(.cs)`.
+
+### 11.10 Obfuscation removed
+- .NET Reactor obfuscation was removed from the build (per `*.dotnet_reactor.targets` being disabled) to keep builds and debugging transparent.
+
+### 11.11 Test coverage
+- xUnit project (`BookFlow.Tests`, net9.0-windows) — **47 tests**, all green. Covers `SharedRingBuffer`, WCF contract mapping, `DomRowData`, `DomEngine` (incl. snapshot seed and the locked-market trade-attribution P0 fix), `L2AnalyticsWindow`, `MicrostructureDetector` (incl. bias), and `SignalReliabilityTracker`.
+

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using BookFlow.Shared.Contracts; // Unified shared DOM contracts
+using BookFlow.Shared.Analytics;
 
 namespace BookFlow.App.Interfaces
 {
@@ -31,6 +33,11 @@ namespace BookFlow.App.Interfaces
         /// Stream of statistics updates (volume, spread, etc.).
         /// </summary>
         IObservable<StatisticsUpdate> StatisticsUpdates { get; }
+
+        /// <summary>
+        /// Stream of detected order-flow signals (spoofing/iceberg/withdrawal/aggression).
+        /// </summary>
+        IObservable<MicrostructureSignal> MicrostructureSignals { get; }
 
         /// <summary>
         /// Gets the current connection status.
@@ -151,5 +158,11 @@ namespace BookFlow.App.Interfaces
         /// Forces the engine to recalculate its state and publish a new ladder update.
         /// </summary>
         void ForceUpdate();
+
+        /// <summary>
+        /// Q5: per-level order-flow analytics (add/cancel/trade accumulators) within
+        /// ±<paramref name="radiusTicks"/> of the current market, high → low price.
+        /// </summary>
+        IReadOnlyList<L2AnalyticsSlot> GetVicinityAnalytics(int radiusTicks = 20);
     }
 }

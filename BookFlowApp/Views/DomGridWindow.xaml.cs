@@ -207,9 +207,8 @@ namespace BookFlow.App.Views
                                 System.Diagnostics.Debug.WriteLine($"[DOM Center] Using fallback visible rows: {visibleRowCount}");
                             }
                             
-                            // Calculate the top row index to center the target row
-                            // Subtract 5 from center offset to position top of book 5 lines below center
-                            var centerOffset = (visibleRowCount / 2) - 5; // -5 to position top of book 5 lines below center
+                            // Put the target row dead-center: top row = target - half a viewport.
+                            var centerOffset = visibleRowCount / 2;
                             int targetTopRowIndex = Math.Max(0, rowIndex - centerOffset);
                             System.Diagnostics.Debug.WriteLine($"[DOM Center] Target row {rowIndex}, visible rows {visibleRowCount}, centering at top row {targetTopRowIndex}");
                             

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 using System.Windows.Input;
 using BookFlow.Shared.Contracts;
+using BookFlow.Shared.Analytics;
 using BookFlow.App.Interfaces;
 using BookFlow.App.Models;
 using System.Linq;
@@ -25,7 +26,14 @@ namespace BookFlow.App.ViewModels
         private readonly ITradingService? _tradingService;
         private readonly DispatcherTimer _uiUpdateTimer;
         private IDisposable? _ladderSubscription;
+        private IDisposable? _signalSubscription;
         private volatile bool _disposed = false;
+
+        // Microstructure signal feed + transient ladder glyphs.
+        private readonly List<DomRowData> _activeSignalRows = new();
+        private static readonly long SignalDwellTicks = TimeSpan.FromSeconds(2).Ticks;
+        private const int MaxFeed = 60;
+        public ObservableCollection<SignalFeedItem> RecentSignals { get; } = new();
         
         // Logging integration - simple on/off
         public LogWindowViewModel? LogViewModel { get; set; }
@@ -97,6 +105,7 @@ namespace BookFlow.App.ViewModels
 
             // Subscribe to engine updates (store the handle so Dispose can release it)
             _ladderSubscription = _domEngine.LadderUpdates.Subscribe(OnLadderUpdate);
+            _signalSubscription = _domEngine.MicrostructureSignals.Subscribe(OnSignal);
             _domEngine.ConnectionStatusChanged += OnConnectionStatusChanged;
 
             // Set up UI update timer for smooth 60fps updates
@@ -421,7 +430,60 @@ namespace BookFlow.App.ViewModels
         private void OnUiUpdateTick(object? sender, EventArgs e)
         {
             // Periodic UI pulse to refresh time-sensitive bindings (e.g., recent trade highlight decay)
-            UiPulseTicks = DateTime.UtcNow.Ticks;
+            var now = DateTime.UtcNow.Ticks;
+            UiPulseTicks = now;
+
+            // Clear microstructure glyphs that have outlived their dwell.
+            for (int i = _activeSignalRows.Count - 1; i >= 0; i--)
+            {
+                var row = _activeSignalRows[i];
+                if (now - row.SignalTicks > SignalDwellTicks)
+                {
+                    row.SignalGlyph = string.Empty;
+                    _activeSignalRows.RemoveAt(i);
+                }
+            }
+        }
+
+        // A detected order-flow signal. Adds to the feed and (for level-anchored spoof/iceberg)
+        // sets a transient glyph on the matching ladder row.
+        private void OnSignal(MicrostructureSignal sig)
+        {
+            App.Current?.Dispatcher?.BeginInvoke(() =>
+            {
+                RecentSignals.Insert(0, new SignalFeedItem
+                {
+                    Time = DateTime.Now,
+                    Type = sig.Type,
+                    Side = sig.Side,
+                    Price = sig.Price,
+                    Label = sig.Label,
+                    Bias = sig.Bias,
+                    IsStrong = sig.Strong,
+                    ReliabilityBars = sig.ReliabilityBars,
+                    ReliabilityRatio = sig.ReliabilityRatio,
+                    ReliabilitySamples = sig.ReliabilitySamples,
+                    ReliabilityLearning = sig.ReliabilityLearning,
+                });
+                while (RecentSignals.Count > MaxFeed) RecentSignals.RemoveAt(RecentSignals.Count - 1);
+
+                string? glyph = sig.Type switch
+                {
+                    MicrostructureSignalType.Spoofing => "S",
+                    MicrostructureSignalType.Iceberg => "I",
+                    _ => null,
+                };
+                if (glyph != null && sig.Price.HasValue)
+                {
+                    var row = DomRows.FirstOrDefault(r => r.Price == sig.Price.Value);
+                    if (row != null)
+                    {
+                        row.SignalGlyph = glyph;
+                        row.SignalTicks = DateTime.UtcNow.Ticks;
+                        if (!_activeSignalRows.Contains(row)) _activeSignalRows.Add(row);
+                    }
+                }
+            });
         }
 
         #endregion
@@ -1064,6 +1126,8 @@ namespace BookFlow.App.ViewModels
             // Detach every subscription so this view model (and the window) can be collected.
             _ladderSubscription?.Dispose();
             _ladderSubscription = null;
+            _signalSubscription?.Dispose();
+            _signalSubscription = null;
             _domEngine.ConnectionStatusChanged -= OnConnectionStatusChanged;
             if (_tradingService != null)
             {

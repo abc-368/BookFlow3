@@ -4,7 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="BookFlow Controller - High Performance DOM" Height="500" Width="650"
+        Title="BookFlow Controller - High Performance DOM" Width="650"
+        SizeToContent="Height"
         Background="#FF1E2A3A"
         WindowStartupLocation="CenterScreen">
     
@@ -86,7 +87,6 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <!-- Header -->
@@ -122,6 +122,8 @@
                             Width="100" IsEnabled="{Binding CanDisconnect}" Click="BtnDisconnect_Click"/>
                     <Button Name="btnRefreshSystem" Content="Refresh System" Style="{StaticResource ProfessionalButtonStyle}"
                             Width="120" Margin="10,0,0,0" Click="BtnRefreshSystem_Click"/>
+                    <Button Name="btnSystemLog" Content="System Log" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="100" Margin="10,0,0,0" Click="BtnSystemLog_Click"/>
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -187,54 +189,13 @@
                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                     <Button Name="btnLaunchDom" Content="Launch DOM" Style="{StaticResource ProfessionalButtonStyle}"
                             Width="120" IsEnabled="{Binding CanLaunchDom}" Click="BtnLaunchDom_Click"/>
-                    <TextBlock Text="{Binding SelectedInstrumentDetails}" 
-                              Foreground="#FF95A5A6" FontSize="10" VerticalAlignment="Center" 
+                    <Button Name="btnRefreshInstruments" Content="Refresh" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="90" Margin="10,0,0,0" IsEnabled="{Binding IsConnected}" Click="BtnRefreshInstruments_Click"/>
+                    <TextBlock Text="{Binding SelectedInstrumentDetails}"
+                              Foreground="#FF95A5A6" FontSize="10" VerticalAlignment="Center"
                               Margin="15,0,0,0"/>
                 </StackPanel>
             </StackPanel>
-        </Border>
-
-        <!-- System Log -->
-        <Border Grid.Row="4" Background="#FF2B3E50" BorderBrush="#FF4A90E2" BorderThickness="1" 
-                CornerRadius="5" Padding="5">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5,0,0,5">
-                    <Label Content="System Log:" Style="{StaticResource LabelStyle}"/>
-                    <CheckBox Name="chkAutoScroll" Content="Auto Scroll" Foreground="White" 
-                              FontSize="10" VerticalAlignment="Center" Margin="20,0,0,0"
-                              IsChecked="True"/>
-                    <Button Content="Clear Log" Style="{StaticResource ProfessionalButtonStyle}"
-                            Width="80" Height="20" FontSize="10" Margin="10,0,0,0"
-                            Click="BtnClearLog_Click"/>
-                </StackPanel>
-                
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                              Name="logScrollViewer">
-                    <TextBox Name="txtSystemLog" 
-                             Text="{Binding SystemLogText, Mode=OneWay}"
-                             TextWrapping="Wrap" 
-                             Background="#FF1A252F" Foreground="#FFEEEEEE" 
-                             FontFamily="Consolas" FontSize="10" Padding="5"
-                             BorderThickness="0"
-                             IsReadOnly="True"
-                             VerticalScrollBarVisibility="Hidden"
-                             HorizontalScrollBarVisibility="Hidden">
-                        <TextBox.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Copy" Click="CopyLog_Click" InputGestureText="Ctrl+C"/>
-                                <MenuItem Header="Select All" Click="SelectAllLog_Click" InputGestureText="Ctrl+A"/>
-                                <Separator/>
-                                <MenuItem Header="Clear Log" Click="BtnClearLog_Click"/>
-                            </ContextMenu>
-                        </TextBox.ContextMenu>
-                    </TextBox>
-                </ScrollViewer>
-            </Grid>
         </Border>
     </Grid>
 </Window>

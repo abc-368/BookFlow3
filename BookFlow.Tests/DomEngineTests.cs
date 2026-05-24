@@ -1,8 +1,10 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BookFlow.App.Engine;
 using BookFlow.Shared.Contracts;
+using BookFlow.Shared.Analytics;
 using Xunit;
 
 namespace BookFlow.Tests
@@ -93,6 +95,25 @@ namespace BookFlow.Tests
 
             Assert.True(gate.Wait(TimeSpan.FromSeconds(2)), "No ladder update with LastBidHitPrice arrived");
             Assert.Equal(100.00m, captured!.LastBidHitPrice);
+        }
+
+        [Fact]
+        public void Analytics_TrackAddCancelAndTradeAroundMarket()
+        {
+            using var engine = new DomEngine("ES", 1, new StubTradingService(), 0.25m, 50m);
+            engine.ProcessMessage(L2(L2MarketSide.Bid, L2Operation.Add, 100.00, 10));
+            engine.ProcessMessage(L2(L2MarketSide.Ask, L2Operation.Add, 100.25, 20));
+            engine.ProcessMessage(L2(L2MarketSide.Bid, L2Operation.Update, 100.00, 4)); // 6 canceled
+            engine.ProcessMessage(L1Last(100.25, 3));                                    // trade lifts ask
+
+            var vicinity = engine.GetVicinityAnalytics(4);
+            var bid = vicinity.First(s => s.Price == 100.00m);
+            var ask = vicinity.First(s => s.Price == 100.25m);
+
+            Assert.Equal(10, bid.AddedVolume);
+            Assert.Equal(6, bid.CanceledVolume);
+            Assert.Equal(20, ask.AddedVolume);
+            Assert.Equal(3, ask.TradedVolume);
         }
 
         [Fact]

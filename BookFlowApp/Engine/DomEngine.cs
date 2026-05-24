@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using BookFlow.App.Interfaces;
 using BookFlow.Shared.Contracts;
 using BookFlow.Shared.Service;
+using BookFlow.Shared.Analytics;
 
 namespace BookFlow.App.Engine
 {
@@ -24,6 +25,10 @@ namespace BookFlow.App.Engine
         private readonly object _syncLock = new object();
         private readonly SortedDictionary<decimal, PriceLevel> _bidBook = new();
         private readonly SortedDictionary<decimal, PriceLevel> _askBook = new();
+
+        // Q5: additive per-level order-flow analytics (add/cancel/trade) in a sliding window
+        // around the market. Fed under _syncLock from the data thread; O(1) per event.
+        private readonly L2AnalyticsWindow _analytics;
         
         // Lock-free snapshot publication: the writer (timer/ForceUpdate) builds a fresh
         // immutable BookSnapshot and atomically publishes it via a volatile reference.
@@ -35,6 +40,15 @@ namespace BookFlow.App.Engine
         // Reactive streams
         private readonly Subject<LadderUpdate> _ladderUpdatesSubject = new();
         private readonly Subject<StatisticsUpdate> _statisticsUpdatesSubject = new();
+        private readonly Subject<MicrostructureSignal> _microstructureSubject = new();
+
+        // Microstructure detection (diffs successive vicinity snapshots; runs on a 4 Hz timer).
+        private readonly MicrostructureDetector _detector = new MicrostructureDetector();
+        // Forward-evaluates emitted signals by price-level barriers to score each TYPE's hit-rate.
+        private readonly SignalReliabilityTracker _reliability = new SignalReliabilityTracker();
+        private System.Threading.Timer? _microstructureTimer;
+        private IReadOnlyList<L2AnalyticsSlot>? _prevVicinity;
+        private const int MicroRadiusTicks = 30;
         
         // Market state
         private decimal? _bestBid;
@@ -100,6 +114,8 @@ namespace BookFlow.App.Engine
         // Observable streams with intelligent conflation
         public IObservable<LadderUpdate> LadderUpdates { get; }
         public IObservable<StatisticsUpdate> StatisticsUpdates { get; }
+        // Sparse order-flow signals (spoofing/iceberg/withdrawal/aggression). Not conflated.
+        public IObservable<MicrostructureSignal> MicrostructureSignals { get; }
         
         public DomEngine(string instrumentName, byte tickerId, ITradingService tradingService, decimal tickSize = 0.25m, decimal pointValue = 50m, DomSettings? settings = null)
         {
@@ -109,6 +125,7 @@ namespace BookFlow.App.Engine
             _tickSize = tickSize > 0 ? tickSize : 0.25m;
             _pointValue = pointValue > 0 ? pointValue : 50m;
             _settings = settings ?? new DomSettings();
+            _analytics = new L2AnalyticsWindow(_tickSize);
 
             // Initialize display precision from tick-size so ladder advances on correct grid
             _priceDecimalPlaces = Math.Max(_priceDecimalPlaces, GetDecimalPlacesForStep(_tickSize));
@@ -128,10 +145,13 @@ namespace BookFlow.App.Engine
             // Note: No initial ladder publication - wait for real market data first
                 
             StatisticsUpdates = _statisticsUpdatesSubject.AsObservable();
-            
+            MicrostructureSignals = _microstructureSubject.AsObservable();
+
             // Set up periodic timers - much less aggressive timing
             _statisticsTimer = new System.Threading.Timer(UpdateStatistics, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
             _snapshotTimer = new System.Threading.Timer(UpdateSnapshot, null, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100)); // 100ms for smooth 10fps updates
+            // Microstructure detector: diff vicinity snapshots at 4 Hz (after a warm-up delay).
+            _microstructureTimer = new System.Threading.Timer(OnMicrostructureTick, null, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(250));
         }
 
         public async Task<bool> StartAsync(IDataFeed dataFeed)
@@ -272,6 +292,16 @@ namespace BookFlow.App.Engine
         {
             long lastSeq = snapshot?.LastSequence ?? 0;
 
+            // Defensive: the snapshot is keyed by TickerId and carries the instrument name.
+            // If it doesn't match what this engine expects, the ticker mapping is stale/wrong
+            // (would otherwise surface as e.g. an ES window showing NQ prices). Flag it loudly.
+            if (snapshot != null && !string.IsNullOrEmpty(snapshot.InstrumentName) &&
+                !string.Equals(snapshot.InstrumentName, InstrumentName, StringComparison.OrdinalIgnoreCase))
+            {
+                OnError($"DOM snapshot instrument mismatch: TickerId {TickerId} expected '{InstrumentName}' but server returned '{snapshot.InstrumentName}' (stale ticker mapping)",
+                        new InvalidOperationException("Ticker/instrument mismatch"));
+            }
+
             if (snapshot != null && (snapshot.Bids.Count > 0 || snapshot.Asks.Count > 0))
             {
                 lock (_syncLock)
@@ -398,6 +428,11 @@ namespace BookFlow.App.Engine
                     Interlocked.Increment(ref _lastMarketDataChangeSequence);
                     break;
             }
+
+            // Q5: feed the analytics window with the resulting resting size at this level so it
+            // can accrue add/cancel deltas. Remove / zero-volume => size 0 (full withdrawal).
+            long effectiveSize = (operation == L2Operation.Remove || volume <= 0) ? 0 : volume;
+            _analytics.OnDepth(side == L2MarketSide.Bid, price, effectiveSize);
 
             UpdateBestPricesFromBook();
             // NOTE: engine-level crossed-level pruning intentionally omitted. Best-price
@@ -526,6 +561,9 @@ namespace BookFlow.App.Engine
             // Q1: remember the last execution price per aggressor side.
             if (hitBid) _lastBidHitPrice = price;
             else _lastAskHitPrice = price;
+
+            // Q5: accrue aggressive trade volume (split by aggressor side) at this level.
+            _analytics.OnTrade(price, volume, hitBid);
 
             if (_bidBook.Count == 0 && _askBook.Count == 0)
                 return;
@@ -949,6 +987,83 @@ namespace BookFlow.App.Engine
             return _readerSnapshot;
         }
         
+        /// <summary>
+        /// Q5: snapshot of per-level order-flow analytics (add/cancel/trade) within
+        /// ±<paramref name="radiusTicks"/> of the current market, for microstructure inference
+        /// (e.g. relating top-of-book moves to vicinity cancel bursts). High → low price.
+        /// </summary>
+        public IReadOnlyList<L2AnalyticsSlot> GetVicinityAnalytics(int radiusTicks = 20)
+        {
+            lock (_syncLock)
+            {
+                decimal center;
+                if (_bestBid.HasValue && _bestAsk.HasValue) center = (_bestBid.Value + _bestAsk.Value) / 2m;
+                else if (_bestBid.HasValue) center = _bestBid.Value;
+                else if (_bestAsk.HasValue) center = _bestAsk.Value;
+                else if (_lastTradedPrice.HasValue) center = _lastTradedPrice.Value;
+                else return System.Array.Empty<L2AnalyticsSlot>();
+                return _analytics.GetVicinity(center, radiusTicks);
+            }
+        }
+
+        // Runs the diff-based detectors on a snapshot of the vicinity and publishes signals.
+        private void OnMicrostructureTick(object? state)
+        {
+            if (_disposed) return;
+            try
+            {
+                if (!_settings.EnableMicrostructureSignals)
+                {
+                    _prevVicinity = null; // reset baseline so re-enabling doesn't spike on a stale diff
+                    return;
+                }
+
+                // Apply per-instrument thresholds (cheap; picks up live settings edits).
+                _detector.SpoofMinChurn = _settings.SpoofMinChurn;
+                _detector.SpoofMaxTradedFraction = _settings.SpoofMaxTradedFraction;
+                _detector.IcebergMinRefill = _settings.IcebergMinRefill;
+                _detector.WithdrawalMinSize = _settings.WithdrawalMinSize;
+                _detector.WithdrawalRadiusTicks = _settings.WithdrawalRadiusTicks;
+                _detector.AggressionMinVolume = _settings.AggressionMinVolume;
+                _detector.AggressionMinImbalance = _settings.AggressionMinImbalance;
+
+                var curr = GetVicinityAnalytics(MicroRadiusTicks); // copies under _syncLock
+                decimal? bb, ba;
+                lock (_syncLock) { bb = _bestBid; ba = _bestAsk; }
+                var signals = _detector.Detect(_prevVicinity, curr, bb, ba, _tickSize, DateTime.UtcNow.Ticks);
+                _prevVicinity = curr;
+
+                // Reliability: resolve outstanding predictions against the current mid first, then
+                // stamp each new signal with the prior hit-rate of its type and start tracking it.
+                _reliability.EvalTicks = _settings.PredictionEvalTicks;
+                _reliability.MinSamples = _settings.ReliabilityMinSamples;
+                decimal? mid = (bb.HasValue && ba.HasValue) ? (bb.Value + ba.Value) / 2m : (bb ?? ba);
+                long? midTicks = (mid.HasValue && _tickSize > 0)
+                    ? (long?)Math.Round(mid.Value / _tickSize, MidpointRounding.AwayFromZero) : null;
+                if (midTicks.HasValue) _reliability.OnPriceSample(midTicks.Value);
+
+                for (int i = 0; i < signals.Count; i++)
+                {
+                    var sig = signals[i];
+                    var rel = _reliability.GetReliability(sig.Type);
+                    sig.ReliabilityBars = rel.Bars;
+                    sig.ReliabilityRatio = rel.Ratio;
+                    sig.ReliabilitySamples = rel.Samples;
+                    sig.ReliabilityLearning = rel.Learning;
+
+                    if (midTicks.HasValue)
+                    {
+                        decimal anchor = sig.Price ?? mid!.Value;
+                        long anchorTicks = (long)Math.Round(anchor / _tickSize, MidpointRounding.AwayFromZero);
+                        _reliability.RegisterSignal(sig.Type, sig.Bias, anchorTicks);
+                    }
+
+                    _microstructureSubject.OnNext(sig);
+                }
+            }
+            catch (Exception ex) { OnError("Microstructure detection error", ex); }
+        }
+
         public StatisticsSnapshot GetStatisticsSnapshot()
         {
             var snapshot = GetBookSnapshot();
@@ -1050,6 +1165,12 @@ namespace BookFlow.App.Engine
                 
                 // Clear snapshot
                 _readerSnapshot = CreateEmptySnapshot();
+
+                // Reset Q5 analytics accumulators.
+                _analytics.Clear();
+
+                // Drop in-flight predictions and per-type hit-rate history.
+                _reliability.Reset();
             }
             
             // Publish empty ladder update to clear UI
@@ -1270,12 +1391,14 @@ namespace BookFlow.App.Engine
 
             _statisticsTimer?.Dispose();
             _snapshotTimer?.Dispose();
+            _microstructureTimer?.Dispose();
 
             _dataSubscription?.Dispose();
             _portfolioSubscription?.Dispose();
 
             _ladderUpdatesSubject?.Dispose();
             _statisticsUpdatesSubject?.Dispose();
+            _microstructureSubject?.Dispose();
         }
         
         // Align price to the configured tick size grid

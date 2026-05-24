@@ -47,6 +47,21 @@ namespace BookFlow.Shared.Contracts
         private string _askBackgroundColor = "#FFC62828";
         private string _normalBackgroundColor = "#FF1A252F";
 
+        // Microstructure detector thresholds (per-instrument; volume-scale-dependent, so they
+        // should be tuned for the contract — ES carries far larger size than a thin future).
+        private bool _enableMicrostructureSignals = true;
+        private int _spoofMinChurn = 40;
+        private double _spoofMaxTradedFraction = 0.15;
+        private int _icebergMinRefill = 20;
+        private int _withdrawalMinSize = 60;
+        private int _withdrawalRadiusTicks = 5;
+        private int _aggressionMinVolume = 30;
+        private double _aggressionMinImbalance = 0.6;
+
+        // Signal reliability scoring: how a fired signal's prediction is graded against later price.
+        private int _predictionEvalTicks = 4;     // barrier distance (ticks) in the predicted direction
+        private int _reliabilityMinSamples = 5;   // resolved samples before the strength meter lights up
+
         // Per-column configuration collection
         private ObservableCollection<ColumnConfig> _columns = new ObservableCollection<ColumnConfig>();
         private readonly Dictionary<string, ColumnConfig> _columnsByKey = new Dictionary<string, ColumnConfig>();
@@ -84,6 +99,18 @@ namespace BookFlow.Shared.Contracts
 
         public ObservableCollection<ColumnConfig> Columns { get => _columns; set { if (_columns != value) { _columns = value; OnPropertyChanged(); RebuildColumnsByKey(); } } }
         public Dictionary<string, ColumnConfig> ColumnsByKey => _columnsByKey;
+
+        // Microstructure detection settings (per-instrument)
+        public bool EnableMicrostructureSignals { get => _enableMicrostructureSignals; set { if (_enableMicrostructureSignals != value) { _enableMicrostructureSignals = value; OnPropertyChanged(); } } }
+        public int SpoofMinChurn { get => _spoofMinChurn; set { if (_spoofMinChurn != value && value >= 1 && value <= 1000000) { _spoofMinChurn = value; OnPropertyChanged(); } } }
+        public double SpoofMaxTradedFraction { get => _spoofMaxTradedFraction; set { if (_spoofMaxTradedFraction != value && value >= 0 && value <= 1) { _spoofMaxTradedFraction = value; OnPropertyChanged(); } } }
+        public int IcebergMinRefill { get => _icebergMinRefill; set { if (_icebergMinRefill != value && value >= 1 && value <= 1000000) { _icebergMinRefill = value; OnPropertyChanged(); } } }
+        public int WithdrawalMinSize { get => _withdrawalMinSize; set { if (_withdrawalMinSize != value && value >= 1 && value <= 1000000) { _withdrawalMinSize = value; OnPropertyChanged(); } } }
+        public int WithdrawalRadiusTicks { get => _withdrawalRadiusTicks; set { if (_withdrawalRadiusTicks != value && value >= 1 && value <= 256) { _withdrawalRadiusTicks = value; OnPropertyChanged(); } } }
+        public int AggressionMinVolume { get => _aggressionMinVolume; set { if (_aggressionMinVolume != value && value >= 1 && value <= 1000000) { _aggressionMinVolume = value; OnPropertyChanged(); } } }
+        public double AggressionMinImbalance { get => _aggressionMinImbalance; set { if (_aggressionMinImbalance != value && value >= 0 && value <= 1) { _aggressionMinImbalance = value; OnPropertyChanged(); } } }
+        public int PredictionEvalTicks { get => _predictionEvalTicks; set { if (_predictionEvalTicks != value && value >= 1 && value <= 100) { _predictionEvalTicks = value; OnPropertyChanged(); } } }
+        public int ReliabilityMinSamples { get => _reliabilityMinSamples; set { if (_reliabilityMinSamples != value && value >= 1 && value <= 1000) { _reliabilityMinSamples = value; OnPropertyChanged(); } } }
         #endregion
 
         public void ResetToDefaults()
@@ -112,6 +139,17 @@ namespace BookFlow.Shared.Contracts
             BidBackgroundColor = "#FF2E7D32";
             AskBackgroundColor = "#FFC62828";
             NormalBackgroundColor = "#FF1A252F";
+
+            EnableMicrostructureSignals = true;
+            SpoofMinChurn = 40;
+            SpoofMaxTradedFraction = 0.15;
+            IcebergMinRefill = 20;
+            WithdrawalMinSize = 60;
+            WithdrawalRadiusTicks = 5;
+            AggressionMinVolume = 30;
+            AggressionMinImbalance = 0.6;
+            PredictionEvalTicks = 4;
+            ReliabilityMinSamples = 5;
 
             Columns = new ObservableCollection<ColumnConfig>
             {
