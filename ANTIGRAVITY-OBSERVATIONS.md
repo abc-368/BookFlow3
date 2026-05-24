@@ -16,6 +16,8 @@ However, a deep audit of the actual C# code inside `BookFlowApp` reveals several
 
 ## 2. Core Implementation Flaws & Observations
 
+> **Status (current reality):** All four items in this section (§2.1–§2.4) have since been **implemented and verified** — see §3. The diagnoses below are retained as the rationale. Note the line numbers cited are from an earlier revision and no longer match (`UpdateLastTrade`'s nearest-key logic is now ~`DomEngine.cs:569-594`; range-limited snapshot copy ~`665-690`; `PointValue` is `DomViewModel.cs:78`).
+
 ### 2.1 Critical Performance Bottleneck: $O(N)$ Linear Search in Hot Path
 * **Location**: [DomEngine.cs:434-447](file:///c:/Users/master/source/repos/BookFlow5/BookFlowApp/Engine/DomEngine.cs#L434-L447)
 * **The Code**:
@@ -179,6 +181,8 @@ This section sanity checks all the entries in [CLAUDE-ENHANCEMENTS.md](file:///c
 
 ### 4.4 Ticker ID Recycling (Recycling Active vs. Monotonic Stable IDs)
 * **Enhancement Plan Claim**: Section 11.2 states `RegisterTicker` assigns non-recycled IDs and `UnregisterTicker` is a no-op to prevent window re-pointing bugs.
-* **Implementation Detail**: In `BookFlowAddOn.cs`, `UnregisterTicker` is NOT a no-op; it actively removes mappings and pushes ticker IDs back onto `_availableTickerIds` for recycling.
-* **Critique & Warning**: This represents a potential regression. If ticker IDs are recycled during a session, active client-side DOM windows could be re-pointed to different instruments. Although the defensive check in `SeedFromSnapshot` logs a warning upon instrument mismatch, raw tick ingestion would still stream the new instrument into the old window.
-* **Recommendation**: Refactor `UnregisterTicker` to be a no-op and make ID generation purely session-monotonic. Since ticker IDs are bytes (0 to 255), this easily covers typical session instrument limits without exhausting the address space.
+* **Correction (this claim was stale):** An earlier draft of this section asserted `UnregisterTicker` still recycled IDs via an `_availableTickerIds` free list. That is **not** the current code. Verified in `BookFlowAddOn.cs`:
+  * `RegisterTicker` assigns **monotonic** IDs (`_nextTickerIdInt++`) and dedups by instrument name (same instrument → same id for the session).
+  * `UnregisterTicker` is an explicit **no-op** for the mapping (`BookFlowAddOn.cs:294`).
+  * `_availableTickerIds` **does not exist** anywhere in the project.
+* **Assessment**: The implementation already matches the recommendation — IDs are session-monotonic and never recycled, so an open DOM window can never be re-pointed to another instrument (the original ES-shows-NQ bug). `CLAUDE-ENHANCEMENTS.md §11.2` is accurate. **No action required.**

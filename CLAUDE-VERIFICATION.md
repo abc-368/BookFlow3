@@ -50,24 +50,10 @@ This document provides a detailed verification and critique of Claude's suggesti
 
 ### Antigravity Verification & Refinement
 * **Agree**: Stale price levels are a frequent artifact of asynchronous network updates or missed delete packets.
-* **Crucial Correction**:
-  * Displays should *never* show bid depth above the best bid or ask depth below the best ask. Suppressing them at the rendering level is robust and safe.
-  * For the engine layer, aggressive pruning of crossed prices is required for data hygiene.
-  * In `DomEngine.cs`, during `ProcessL2Update`, we should actively sweep and remove crossed levels:
-    ```csharp
-    // Clear crossed bids
-    if (_bestAsk.HasValue)
-    {
-        var crossedBids = _bidBook.Keys.Where(p => p >= _bestAsk.Value).ToList();
-        foreach (var price in crossedBids) _bidBook.Remove(price);
-    }
-    // Clear crossed asks
-    if (_bestBid.HasValue)
-    {
-        var crossedAsks = _askBook.Keys.Where(p => p <= _bestBid.Value).ToList();
-        foreach (var price in crossedAsks) _askBook.Remove(price);
-    }
-    ```
+
+> **Implemented (and where we diverged):** Suppression is done **at the display layer only** — `DomRowData` exposes `DisplayBidDepth`/`DisplayAskDepth`/`DisplayBidSnapshot`/`DisplayAskSnapshot`, gated by `IsBidZone`/`IsAskZone`, so bid size is never shown above the best bid nor ask size below the best ask.
+>
+> **Engine-level pruning was deliberately NOT added.** During review we concluded that sweeping crossed levels in `ProcessL2Update` is unsafe: best-price resolution (`UpdateBestPricesFromBook`) already leaves any crossing level stranded *inside* the spread (it is no longer `>= bestAsk` / `<= bestBid`), so a resolved-best prune is a no-op there; and raw-extreme pruning risks deleting valid depth, because which leg is stale is ambiguous from aggregated depth alone. The display-layer gate is robust without mutating the book. This is documented inline at `DomEngine.ProcessL2Update`. The corresponding engine-prune unit test was removed for the same reason.
 
 ---
 

@@ -11,25 +11,27 @@ BookFlow decouples heavy market data acquisition and order routing (which must r
 ```mermaid
 graph TD
     subgraph NT8 [NinjaTrader 8 Process - .NET Framework 4.8]
-        Indi[BookFlowIndi: L1/L2 Capture] -->|Write binary| RingBuf(SharedRingBuffer: MMF)
-        AddOn[BookFlowAddOn: Manager] <-->|Named Pipes| ControlPipe(ControlPipe: IPC)
-        AddOn <-->|TCP Loopback 38755| TcpEvents[TCP Order Event Server]
+        Indi[BookFlowIndi: L1/L2 Capture] -->|coalesce + single drain thread| RingBuf(SharedRingBuffer: MMF)
+        AddOn[BookFlowAddOn: Manager + WCF host] <-->|WCF duplex netNamedPipe| WcfSvc(IBookFlowService / IBookFlowCallback)
     end
 
     subgraph Shared [SharedLibrary.Standard - .NET Standard 2.0]
         Contracts[DataContracts.cs: Explicit StructLayout]
-        IPC[IPC Logic: RingBuffer & ControlPipe]
+        IPC[SharedRingBuffer]
+        Svc[IBookFlowService + IBookFlowCallback contracts]
+        Analytics[Analytics: L2AnalyticsWindow, MicrostructureDetector, SignalReliabilityTracker]
     end
 
-    subgraph Client [WPF Standalone App - .NET 9.0 / .NET 10]
+    subgraph Client [WPF Standalone App - .NET 9.0]
         Feed[NT8DirectDataFeed] <--> RingBuf
-        Trading[NT8TradingService] <--> ControlPipe
-        Trading <--> TcpEvents
+        Trading[NT8TradingService] <-->|orders, snapshot, portfolio + event callbacks| WcfSvc
         Engine[DomEngine] <-- Snapshot Reads --- Feed
         VM[DomViewModel] <-- Subscribes --- Engine
         UI[DomGridWindow: DevExpress Grid] <-- Data Binding --- VM
     end
 ```
+
+> **Note:** The original design used a regex-JSON `ControlPipe` plus a loopback **TCP event server on port 38755**. Both were **removed** (Increment 2) and replaced by a single **WCF duplex `netNamedPipe`** service (`IBookFlowService` for request/reply, `IBookFlowCallback` for pushed order/exec/position/account events), serialized with `DataContractSerializer`. The MMF ring still carries L1/L2 ticks.
 
 ### Architectural Components
 
@@ -40,11 +42,12 @@ graph TD
 2. **NinjaTrader Integration (`BookFlow.NT8DataEngine`)**
    * Target Framework: `.NET Framework 4.8` (required by NinjaTrader).
    * **`BookFlowIndi`**: Captures raw Level 1 (`OnMarketData`) and Level 2 (`OnMarketDepth`) ticks. It packages them as raw `UnifiedMarketDataMessage` structs and streams them into the shared memory file.
-   * **`BookFlowAddOn`**: Singleton manager that handles global trading events (orders, executions, position updates) and exposes control channels.
+   * **`BookFlowAddOn`**: Singleton manager that hosts the WCF duplex service, owns the MMF ring drain thread, assigns stable ticker IDs, and maintains versioned authoritative portfolio state. Subscribes to NT8 account events and fans them out to all connected client callbacks.
 3. **DOM Engine (`BookFlow.App.Engine`)**
    * Target Framework: `.NET 9.0` (Client-side execution).
    * Maintains in-memory sorted books (`_bidBook` / `_askBook`), aligns prices, resolves crossed markets, and handles order integration.
-   * Employs a double-buffered snapshot mechanism (`_readerSnapshot` / `_writerSnapshot`) to decouple data parsing from UI rendering threads.
+   * Publishes an immutable `BookSnapshot` via a single `volatile` reference (`_readerSnapshot`) that is atomically swapped by the writer; concurrent writers are serialized by `_writerLock`, while readers (UI poll / stats) take **no lock** at all. (The earlier `ReaderWriterLockSlim` double-buffer was removed.)
+   * Runs off-hot-path microstructure analysis on a 4 Hz timer (`L2AnalyticsWindow` → `MicrostructureDetector` → `SignalReliabilityTracker`).
 4. **WPF Client (`BookFlow.App`)**
    * Renders a 15-column depth ladder using DevExpress `GridControl`.
    * Reuses visual row models (`DomRowData`) in-place to minimize GC collections and optimize grid layout calculations.
@@ -53,16 +56,26 @@ graph TD
 
 ## 2. IPC Channels and Communication Design
 
-The system implements three communication channels to decouple the processes:
-* **MMF Ring Buffer (`BookFlow_Data_Global`)**: A high-speed, circular memory-mapped file for transmitting high-frequency Level 1 and Level 2 market data messages.
-* **Named Pipe (`BookFlow_Control_Global`)**: A reliable, bi-directional pipe for command-and-control requests (e.g., submitting/canceling orders, querying instrument dictionaries).
-* **TCP Port `38755`**: Broadcasts asynchronous order, fill, and position changes as hand-formatted JSON strings.
+The system implements two communication channels to decouple the processes:
+* **MMF Ring Buffer (`BookFlow_Data_Global`)**: A high-speed, circular memory-mapped file for transmitting high-frequency Level 1 and Level 2 market data messages (struct copy, no serialization).
+* **WCF duplex service (`netNamedPipe`)**: Hosted in `BookFlowAddOn`. Carries everything transactional — `IBookFlowService` for request/reply (register, submit/cancel orders, `RequestDomSnapshot`, `RequestPortfolioState`, list accounts), and `IBookFlowCallback` for server-pushed order / execution / position / account events. `DataContractSerializer` wire format. Multi-client by construction (each window opens its own callback channel).
+
+> The previous regex-JSON named pipe (`BookFlow_Control_Global`) and the loopback **TCP event server on port 38755** were both removed.
 
 ---
 
 ## 3. Comprehensive Code Quality Audit & Findings
 
 A deep code-level audit of the current repository has identified several critical bottlenecks, memory leaks, and concurrency hazards.
+
+> **Resolution status (current reality):**
+> - **P0#1 Book volume corruption** — ✅ **RESOLVED.** `UpdateLastTrade` now mutates `_bidBook` and `_askBook` independently (no merged dictionary). Locked by the `LockedMarket_TradeDoesNotClobberSideVolumes` unit test.
+> - **P0#2 Unmanaged subscriptions / leaks** — ✅ **RESOLVED.** `DomEngine.Dispose` is idempotent (`Interlocked.Exchange` guard) and detaches the `DomSettings.PropertyChanged` handler, `OrderBookChanged`, and all Rx subscriptions/timers/subjects; `DomViewModel` stores and disposes its subscriptions.
+> - **P0#3 Double-buffer lock contention** — ✅ **RESOLVED.** Replaced `ReaderWriterLockSlim` with a single `volatile` `_readerSnapshot` (atomic swap); readers are lock-free, writers serialized by `_writerLock`.
+> - **P0#4 Ring-buffer race** — ✅ **RESOLVED** by topology: a single drain thread writes the ring and a single client thread reads it (true SPSC), with the memory barriers fencing the struct write before the pointer publish. CAS is unnecessary in an SPSC ring.
+> - **P1#5 SortedDictionary key traversals** — ⚠️ **PARTIAL.** The per-trade O(N) scan is gone (`UpdateLastTrade` is O(1) align + O(log N) lookup), but best bid/ask are still derived via `Keys.Last()/First()` in `UpdateBestPricesFromBook` rather than maintained incrementally.
+> - **P1#6 Allocation churn** — ⚠️ **PARTIAL.** The per-trade `Dictionary` allocation is gone; `DetectDecimalPlaces` string work and the per-message latency queue remain.
+> - **P1#7 Conflation mismatch** — ◻️ **Known/by-design.** The `Buffer(16ms)` conflation still sits over a ~100 ms snapshot publisher; harmless, low priority.
 
 ### P0 — Critical Issues (Safety and Correctness)
 
@@ -148,5 +161,4 @@ graph TD
    * This distributes layout, drawing, and converter execution across multiple CPU cores, preventing one lagging window from freezing the rest of the application.
 3. **Pull-Based Decoupled UI Loop**
    * Decouple the UI rendering frame rate from the incoming market data tick rate. The background engine updates the double-buffered snapshot at tick speed, and the UI threads poll and render the latest state at a locked 30 or 60 FPS.
-4. **IPC Consolidation**
-   * Replace the TCP loopback server with a **Duplex Named Pipe** or a dedicated **MMF Event Ring Buffer** using binary serializers like **Protobuf** or **MessagePack**. This removes networking socket overhead, eliminates firewall blocks, and decreases serialization lag.
+4. **IPC Consolidation** — ✅ **Done.** The TCP loopback server was replaced by a **WCF duplex `netNamedPipe`** service (events pushed via `IBookFlowCallback`), removing socket overhead and firewall exposure. Wire format is `DataContractSerializer` (protobuf-net was evaluated but dropped to avoid assembly-load friction in NT8). The MMF ring continues to carry L1/L2 ticks.

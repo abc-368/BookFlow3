@@ -3,6 +3,38 @@
 ## Executive Summary
 This document provides a comprehensive analysis of the BookFlow5 trading system architecture and implementation. The system consists of multiple components including a WPF client, .NET Framework 4.8 data engine, and shared library for inter-process communication.
 
+---
+
+## ⏱ Resolution Status (current reality — added post-implementation)
+
+This report is a point-in-time audit (Rounds 1–3). Many findings have since been fixed. Verified against the current code:
+
+**✅ Resolved**
+- *SharedRingBuffer race / barriers* — the ring is now true **SPSC** (one AddOn drain thread writes, one client thread reads), so CAS is unnecessary; barriers fence the struct write before the pointer publish.
+- *Missing Rx subscription cleanup (DomViewModel)* — subscriptions are stored and disposed; `Dispose` also detaches `OrderBookChanged`/`ConnectionStatusChanged`.
+- *BuildFullLadder O(N) `Clear()`+`Add()` churn* — replaced by `RangeObservableCollection.ReplaceRange` (single `Reset`).
+- *`DefaultPointValue = 50m` hardcoded* — removed; PnL uses `_domEngine.PointValue` (`DomViewModel.cs:78`).
+- *Missing tests* — xUnit project added, **47 tests** green.
+- *NEW P0-1 `OrderBookChanged` leak*, *P0-3 settings handler leak*, *P0-4 non-idempotent Dispose* — all fixed (`Dispose` detaches handlers; `Interlocked.Exchange` guard).
+- *NEW P1-1 double-buffer not lock-free* — replaced with atomic-swap `volatile` snapshot; readers lock-free.
+- *NEW P1-2 `UpdateLastTrade` Dictionary alloc + O(N) scan* — now O(1) align + O(log N) lookup, books mutated independently (also fixes the P0 locked-market corruption).
+- *NEW P1-4 silent `OnError`* / *P3-7 `OnCompleted`* — now persisted via `BookFlowLog` regardless of the debug flag.
+- *NEW P2-2 `EnterWriteLock` outside try* — moot; `ReaderWriterLockSlim` removed.
+- *NEW P3-3 dead price-scale detection* — removed.
+- *DotNet Reactor* — obfuscation removed from the build entirely, so the silent-skip concern is moot.
+
+**⚠️ Partial**
+- *SortedDictionary `Keys.Last()/First()`* — gone from the trade path, still used to derive best bid/ask in `UpdateBestPricesFromBook`.
+- *NEW P0-2 `StopAsync` leaves timers running* — `Dispose` stops them, but `StopAsync` alone does not.
+- *Allocation churn* — per-trade dict gone; `DetectDecimalPlaces` strings and the per-message latency queue remain.
+
+**◻️ Still open / by-design (low priority)**
+- Rx `Buffer` conflation over a ~100 ms publisher (P1-7 / NEW P1-5); `_fixedCenterPrice` cross-thread access (NEW P1-6); snapshot fires every 100 ms regardless of change + unimplemented `_lastPublishedSequence` skip (NEW P2-1 / P3-4); `LadderUpdate` list allocations (NEW P2-6); `book.Keys.ToList()` in `UpdateOrderCountsInBook` (NEW P2-5); magic `order.Side` ints and other magic numbers (NEW P3-2/6/9); empty `catch` in `OnOrderBookChanged`/`AlignToTick` (NEW P3-5/8); `ProcessPortfolioUpdate` stub + its subscription (NEW P3-10); `PriceLevelViewModel` dead class (P3).
+
+> Also note: §3 "IPC Channel Issues" references three channels with a slow **TCP** path — that TCP event server (port 38755) and the regex-JSON `ControlPipe` have both been **removed** in favor of a WCF duplex `netNamedPipe` service (see `ARCHITECTURE.md` / `NT8DataEngine.md`).
+
+---
+
 ## Key Technical Issues
 
 ### 1. Structural Concerns

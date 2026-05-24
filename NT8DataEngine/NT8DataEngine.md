@@ -23,13 +23,14 @@ This project is the core of the data engine, living inside the NT8 process.
 
 This class acts as the central hub for the entire system within NinjaTrader. It is implemented as a singleton and performs several critical functions:
 
+> **Status:** This section was updated to current reality. The original design (a regex-JSON `ControlPipeServer` plus a separate `NamedPipeServerStream`/TCP event channel) has been **replaced by a single WCF duplex `netNamedPipe` service** hosted in the AddOn. The `SharedRingBuffer` for market data is unchanged.
+
 *   **Global Channel Management**: It initializes and manages the primary communication channels:
-    *   A `ControlPipeServer` for handling commands and requests from external clients.
-    *   A `SharedRingBuffer` for broadcasting high-volume market data globally.
-    *   A `NamedPipeServerStream` for sending real-time account and order events.
-*   **Ticker Management**: It assigns a unique `TickerId` to each instrument that a `BookFlowIndi` instance is attached to. This allows data from multiple instruments to be multiplexed over the global data channel.
-*   **Account and Order Management**: It subscribes to NinjaTrader's core account events (`OnOrderUpdate`, `OnExecutionUpdate`, `OnPositionUpdate`) and broadcasts these events to connected clients.
-*   **Command Handling**: It processes incoming commands from the control pipe, such as submitting, canceling, or modifying orders, and querying account status.
+    *   A **WCF duplex service** (`IBookFlowService` request/reply + `IBookFlowCallback` event push, `DataContractSerializer` wire format) for all transactional traffic — orders, snapshot/portfolio requests, account listing, and pushed order/exec/position/account events.
+    *   A `SharedRingBuffer` for broadcasting high-volume market data globally (fed by a single drain thread that coalesces from a `ConcurrentQueue`).
+*   **Ticker Management**: It assigns a **stable, session-monotonic** `TickerId` to each instrument a `BookFlowIndi` registers (deduped by instrument name; never recycled, so an open client window can't be re-pointed). This multiplexes multiple instruments over the global data channel.
+*   **Account and Order Management**: It subscribes to NinjaTrader's core account events (`OnOrderUpdate`, `OnExecutionUpdate`, `OnPositionUpdate`) and fans them out to all connected client callbacks. It also maintains a versioned authoritative portfolio snapshot for reconciliation.
+*   **Command Handling**: It processes incoming WCF service calls — submitting, canceling, or modifying orders, querying account status, and serving DOM/portfolio snapshots.
 
 #### `BookFlowIndi.cs`
 
@@ -40,13 +41,9 @@ This is the NinjaTrader indicator that users attach to a chart. Its primary resp
 *   **Data Formatting**: It converts the raw NinjaTrader market data into the `UnifiedMarketDataMessage` format defined in `SharedLibrary.Standard`.
 *   **Publishing**: It writes the formatted data messages into the global `SharedRingBuffer` managed by the `BookFlowAddOn`.
 
-#### `DataEngineManager.cs`
+#### `DataEngineManager.cs` / `InstrumentDataManager.cs` — *removed*
 
-This static class manages instances of `InstrumentDataManager`. It ensures that only one `InstrumentDataManager` is created per instrument, even if the `BookFlowIndi` is applied to multiple charts for the same instrument. It uses a reference counting mechanism to properly dispose of managers when they are no longer needed.
-
-#### `InstrumentDataManager.cs`
-
-This class is responsible for managing the communication channels for a *single* instrument. While the current implementation has moved towards a global, multiplexed channel model in `BookFlowAddOn`, this class retains the logic for a per-instrument channel setup. It encapsulates a `SharedRingBuffer` and a `ControlPipeServer` for a specific instrument, handling data serialization and command processing at the instrument level.
+These per-instrument manager classes were **deleted**. The system uses a single global, multiplexed MMF channel (keyed by `TickerId`) managed directly by `BookFlowAddOn`; the per-instrument channel model and its reference-counting were dead code (and `InstrumentDataManager` truncated event payloads).
 
 ### 2.2. `SharedLibrary.Standard` Project
 
@@ -60,13 +57,13 @@ This file is the most critical part of the shared library. It defines all the da
 
 This class implements a high-performance, lock-free ring buffer using a memory-mapped file (`MemoryMappedFile`). It is designed for one-way, high-throughput communication of market data from the producer (NT8) to the consumer (client). A `Semaphore` is used to signal data availability, allowing the consumer to wait efficiently without busy-spinning.
 
-#### `IPC/ControlPipe.cs`
+#### `Service/IBookFlowService.cs` + `IBookFlowCallback.cs` (replaced `IPC/ControlPipe.cs`)
 
-This class provides a bi-directional command and control channel using `NamedPipeServerStream` and `NamedPipeClientStream`. It is used for lower-frequency, message-based communication, such as:
-*   Sending trading commands from the client to NT8.
-*   Requesting account or position snapshots.
-*   Receiving status updates and responses from NT8.
-The implementation includes custom, lightweight JSON serialization/deserialization to minimize overhead.
+The regex-JSON `ControlPipe.cs` was **removed**. Command/control and event delivery now run over a **WCF duplex service** (`netNamedPipe`):
+*   `IBookFlowService` (request/reply, called by the client): register, submit/cancel orders, `RequestDomSnapshot`, `RequestPortfolioState`, list accounts.
+*   `IBookFlowCallback` (pushed by the server): order / execution / position / account updates, connection status, portfolio-state deltas with a monotonic `Version`.
+
+Hosted by `Service/BookFlowServiceHost.cs` in the AddOn; consumed by `BookFlowApp/Services/BookFlowServiceClient.cs`. Serialized with `DataContractSerializer` (typed contracts, no hand-rolled JSON parsing).
 
 ## 3. Data Structures
 
@@ -92,9 +89,9 @@ This 128-byte struct is used for broadcasting asynchronous events from NT8, such
 *   **`StringData0` - `StringData63`**: A 64-byte fixed-size buffer for string payloads like order IDs or instrument names.
 *   **Overlaid Fields**: The latter part of the struct contains numerous overlapping fields (`AveragePrice`, `Quantity`, `LimitPrice`, `OrderState`, etc.) that are populated based on the `EventType`.
 
-### `ControlMessage`
+### `ControlMessage` / `UnifiedEventMessage` — superseded by WCF contracts
 
-This is a class-based message used for the `ControlPipe`. It contains properties for the request type, instrument name, and nested command objects like `OrderCommand`. Since it's transmitted over a named pipe with serialization, it does not require the strict memory layout of the shared memory structs.
+The hand-rolled `ControlMessage` (for the old JSON `ControlPipe`) and the 128-byte `UnifiedEventMessage` event struct are superseded by the typed WCF `[DataContract]` request/reply and callback messages. `OrderCommand` and the other transactional payloads are now exchanged as data contracts over the duplex service; only the high-frequency `UnifiedMarketDataMessage` still uses the strict `StructLayout` for zero-serialization MMF transport.
 
 ## 4. Communication Channels
 
@@ -106,26 +103,29 @@ The system employs two distinct IPC mechanisms, each suited for a different purp
 *   **Purpose**: High-speed, one-way streaming of `UnifiedMarketDataMessage` structs from NT8 to the client.
 *   **Characteristics**:
     *   **Low Latency**: Writing a struct to shared memory is extremely fast, involving a simple memory copy.
-    *   **Lock-Free**: The design uses atomic operations on head and tail pointers, avoiding the need for locks in the hot path.
+    *   **SPSC, lock-free**: A single drain thread in the AddOn writes the ring (coalescing from a `ConcurrentQueue`) and a single client thread reads it. Memory barriers fence the struct write before the head pointer is published; no locks or CAS are needed in a single-producer/single-consumer ring.
     *   **Efficient Signaling**: A `Semaphore` is used to wake up the consumer thread only when new data is available.
     *   **Global Channel**: A single, large ring buffer (`BookFlow_Data_Global`) is used for all instruments, with the `TickerId` field used to differentiate them.
 
-### `ControlPipe` (for Commands and Events)
+### WCF duplex service (for Commands and Events)
 
-*   **Mechanism**: A `NamedPipe` that provides a message-based, bi-directional communication channel.
+*   **Mechanism**: A WCF duplex service over `netNamedPipeBinding`, hosted in `BookFlowAddOn`. `IBookFlowService` is the request/reply contract; `IBookFlowCallback` is the server→client push contract.
 *   **Purpose**:
-    *   Sending commands from the client to NT8 (e.g., submit order).
-    *   Receiving responses and status messages from NT8.
-    *   Broadcasting lower-frequency events like account updates.
+    *   Sending commands from the client to NT8 (submit/cancel orders, flatten, request DOM/portfolio snapshots).
+    *   Receiving typed responses (including `NtOrderId` correlation) from NT8.
+    *   Pushing order / execution / position / account events and versioned portfolio deltas to every connected client.
 *   **Characteristics**:
-    *   **Reliable**: Named pipes provide guaranteed message delivery.
-    *   **Bi-directional**: Allows for request/response patterns.
-    *   **Flexible**: The use of a simple JSON-like text protocol allows for more complex and variable-sized messages compared to the fixed-size structs in the ring buffer.
-    *   **Global Channels**: The system uses a global control pipe (`BookFlow_Control_Global`) and a global event pipe (`BookFlow_Event_Global`).
+    *   **Typed & reliable**: `DataContractSerializer` contracts — no hand-rolled JSON parsing; in-order on localhost named pipes.
+    *   **Duplex**: One channel for both request/response and server-pushed events (no separate event socket).
+    *   **Multi-client**: each WPF window opens its own callback channel; the host broadcasts to all live callbacks and drops faulted ones.
+
+> The earlier global control pipe (`BookFlow_Control_Global`) and global event pipe (`BookFlow_Event_Global`) no longer exist.
 
 ---
 
 # Implementation Plan: Streaming & IPC Enhancements
+
+> **Status: IMPLEMENTED (historical plan).** Everything below shipped across Increments 1–3: SPSC ring (single drain thread + memory barriers), full AddOn lifecycle/cleanup on `State.Terminated`, and migration of the order/event channel off TCP loopback onto the WCF duplex `netNamedPipe` service. One divergence from the sketch: the multi-producer `lock` on `TryWrite` was avoided entirely by coalescing all indicator writes onto a single drain thread (true SPSC), so the ring needs no write lock. Retained below for design rationale.
 
 This plan outlines critical improvements to the NinjaTrader 8 data streaming and IPC layer. It resolves concurrency bugs, eliminates resource/thread leaks, and optimizes communication channels.
 

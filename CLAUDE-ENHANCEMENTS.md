@@ -57,6 +57,8 @@ Priorities 3 and 4 (consistent portfolio, immediate sync) need a real RPC + dupl
 
 ### 4.1 Market data ingestion — MMF SPSC ring (kept, hardened)
 
+> **Implemented as:** producer coalescing uses a `ConcurrentQueue<UnifiedMarketDataMessage>` + `AutoResetEvent` + a single drain thread (not `System.Threading.Channels`, which isn't in-box on .NET Framework 4.8). The global sequence is stamped into `Reserved1` in the drain loop. Same SPSC topology and DropOldest behavior, zero extra NuGet on the NT8 side.
+
 **Channel:** `BookFlow_Data_Global` (existing name), 80 B/slot, capacity ≥ 1 M slots (~80 MB MMF, paged, fine).
 
 **Producer side (inside AddOn):**
@@ -73,6 +75,8 @@ Priorities 3 and 4 (consistent portfolio, immediate sync) need a real RPC + dupl
 **Slot growth:** if 80 B/slot becomes constraining (e.g., we want per-slot timestamps for end-to-end latency), grow to 96 B and use `Reserved1`/`Reserved2`. Coordinate with the struct contract.
 
 ### 4.2 Control plane — WCF duplex + protobuf-net
+
+> **Implemented as:** WCF duplex over `netNamedPipe` as planned, but serialized with the built-in **`DataContractSerializer`** (`[DataContract]`/`[DataMember]`), **not** protobuf-net. Reason: avoids shipping `protobuf-net.dll` into NT8's dynamic-compile environment (assembly-load friction), and both host (net48) and client (net9) interop warning-free with zero codegen. Endpoint/binding details below otherwise hold.
 
 **Endpoint:** `net.pipe://localhost/bookflow/control` — single named-pipe service hosted in `BookFlowAddOn`.
 
@@ -152,11 +156,13 @@ Order/fill/position events are pushed directly into the relevant view models via
 
 ## 6. New components
 
-- `SharedLibrary.Standard/Contracts/Protobuf/` — protobuf-annotated message types (parallel to existing classes; existing types stay for in-process use).
+> **Implemented as:** the protobuf folder was **not** created (we use `DataContract` on the existing contract classes — see §4.2). Portfolio state was **inlined into `BookFlowAddOn`** (`_portfolioVersion`, `BuildPortfolioSnapshot()`, …) rather than a separate `PortfolioStateTracker.cs`, to keep the NT8-compiled surface minimal and give the snapshot builder direct access to CBI objects. The service/host/client components below shipped as listed.
+
+- ~~`SharedLibrary.Standard/Contracts/Protobuf/`~~ — *not created; `DataContractSerializer` used on existing contract types.*
 - `SharedLibrary.Standard/Service/IBookFlowService.cs` — service contract.
 - `SharedLibrary.Standard/Service/IBookFlowCallback.cs` — callback contract.
 - `NT8DataEngine/Service/BookFlowServiceHost.cs` — owns the `ServiceHost`, manages live callbacks, dispatches events.
-- `NT8DataEngine/Service/PortfolioStateTracker.cs` — versioned authoritative portfolio state.
+- ~~`NT8DataEngine/Service/PortfolioStateTracker.cs`~~ — *versioned portfolio state inlined into `BookFlowAddOn` instead.*
 - `BookFlowApp/Services/BookFlowServiceClient.cs` — duplex WCF client, reconnect logic, subscription cache.
 
 ## 7. Increment plan (each increment ships independently, no half-finished states)
@@ -164,7 +170,7 @@ Order/fill/position events are pushed directly into the relevant view models via
 ### Increment 1 — Lifecycle & cleanup *(no wire change)*
 - Override `BookFlowAddOn.OnStateChange`; initialize on `State.Active`, dispose on `State.Terminated`.
 - `BookFlowAddOn` becomes `IDisposable`. Dispose unsubscribes account events, stops background threads via `CancellationTokenSource`, closes pipes/sockets/MMFs.
-- `BookFlowIndi.OnStateChange == State.Terminated` → call `BookFlowAddOn.UnregisterTicker(_tickerId)`; ticker IDs recycled via free list.
+- `BookFlowIndi.OnStateChange == State.Terminated` → call `BookFlowAddOn.UnregisterTicker(_tickerId)`. *(Superseded: see §11.2 — IDs are now session-monotonic and never recycled; `UnregisterTicker` is a no-op. The original free-list recycling caused the ES-shows-NQ bug.)*
 - `ControlPipeServer.Dispose()` actually cancels the listener loop (interim — full removal in Increment 2).
 - Default `BookFlowIndi.EnableLogging = false`. Rate-limited optional debug.
 
@@ -220,7 +226,7 @@ Order/fill/position events are pushed directly into the relevant view models via
 ## 9. Open questions for the user
 
 1. **WCF on .NET 9 WPF client**: OK with depending on `System.ServiceModel.NetNamedPipe` NuGet? It's a Microsoft-shipped compat shim, mature, but does add an assembly to deploy.
-2. **Protobuf-net vs Google.Protobuf**: protobuf-net is what Jigsaw uses, simpler attribute model on existing C# types. Google.Protobuf needs `.proto` files but is the cross-language standard. Either is fine; preference?
+2. **Protobuf-net vs Google.Protobuf**: protobuf-net is what Jigsaw uses, simpler attribute model on existing C# types. Google.Protobuf needs `.proto` files but is the cross-language standard. Either is fine; preference? *(Resolved: neither — shipped on WCF's built-in `DataContractSerializer` to avoid third-party assembly-load friction in NT8. See §4.2.)*
 3. **Where to enforce `AccountName`**: default to a configured "primary" account and only require explicit selection when multiple are eligible? Or always require explicit?
 4. **Logging directory**: Jigsaw uses `%UserProfile%\Documents\Jigsaw Trading\RTPAppLogs\`. We mirror under `%UserProfile%\Documents\BookFlow\Logs\`?
 
