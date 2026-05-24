@@ -33,6 +33,8 @@ namespace BookFlow.App.ViewModels
         // Microstructure signal feed + transient ladder glyphs.
         private readonly List<DomRowData> _activeSignalRows = new();
         private readonly SignalAutoTrader? _autoTrader;
+        private TradingSession _session;
+        private int _sessionTickCounter;
         private static readonly long SignalDwellTicks = TimeSpan.FromSeconds(2).Ticks;
         // Bounded history so a long session can't grow the feed unbounded. The panel virtualizes,
         // so only on-screen rows are realized regardless of this cap; scrolling reveals the rest.
@@ -116,6 +118,7 @@ namespace BookFlow.App.ViewModels
                 () => _domEngine.FlowToxicity,
                 msg => System.Diagnostics.Debug.WriteLine("[AutoTrade] " + msg));
             _autoTrader.OnPositionChanged(Position); // sync initial state
+            _session = _domEngine.CurrentSession;
 
             // Subscribe to engine updates (store the handle so Dispose can release it)
             _ladderSubscription = _domEngine.LadderUpdates.Subscribe(OnLadderUpdate);
@@ -336,6 +339,18 @@ namespace BookFlow.App.ViewModels
         public ReadOnlyObservableCollection<WorkingOrderMessage>? WorkingOrders => _tradingService?.WorkingOrders;
         public DomSettings Settings => _domEngine.Settings;
 
+        // Continuous/root vs the specific traded contract, and the current session (for the header).
+        public string ContinuousName => _domEngine.ContinuousName;
+        public string TradedContract => InstrumentName;
+        public string SessionText => _session.ToString();
+        public string SessionColorHex => _session switch
+        {
+            TradingSession.Asia => "#FF7E57C2",   // purple
+            TradingSession.London => "#FF42A5F5",  // blue
+            TradingSession.US => "#FF66BB6A",      // green
+            _ => "#FF95A5A6",
+        };
+
         // Display text properties
         public string BestBidText => BestBid?.ToString(PriceFormatString) ?? "--";
         public string BestAskText => BestAsk?.ToString(PriceFormatString) ?? "--";
@@ -447,6 +462,14 @@ namespace BookFlow.App.ViewModels
             // Periodic UI pulse to refresh time-sensitive bindings (e.g., recent trade highlight decay)
             var now = DateTime.UtcNow.Ticks;
             UiPulseTicks = now;
+
+            // Refresh the session label every ~4s (TZ conversion is too costly for every frame).
+            if (++_sessionTickCounter >= 240)
+            {
+                _sessionTickCounter = 0;
+                var s = _domEngine.CurrentSession;
+                if (s != _session) { _session = s; OnPropertyChanged(nameof(SessionText)); OnPropertyChanged(nameof(SessionColorHex)); }
+            }
 
             // Clear microstructure glyphs that have outlived their dwell.
             for (int i = _activeSignalRows.Count - 1; i >= 0; i--)

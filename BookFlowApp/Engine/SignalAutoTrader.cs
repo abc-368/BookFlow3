@@ -98,6 +98,8 @@ namespace BookFlow.App.Engine
             MicrostructureSignalType.Iceberg => _settings.IcebergAutoTrade,
             MicrostructureSignalType.LiquidityWithdrawal => _settings.WithdrawalAutoTrade,
             MicrostructureSignalType.AggressionImbalance => _settings.AggressionAutoTrade,
+            MicrostructureSignalType.OrderFlowImbalance => _settings.OfiAutoTrade,
+            MicrostructureSignalType.BookImbalance => _settings.BookImbalanceAutoTrade,
             _ => null,
         };
 

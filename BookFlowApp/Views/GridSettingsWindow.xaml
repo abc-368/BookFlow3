@@ -175,23 +175,21 @@
 
                         <CheckBox Content="Enable order-flow signals" Margin="0,4,0,2"
                                   IsChecked="{Binding Settings.EnableMicrostructureSignals}"/>
+                        <CheckBox Content="Enable signal audit / feedback loop (records outcomes, logs bracket suggestions)" Margin="0,2,0,2"
+                                  IsChecked="{Binding Settings.EnableSignalAudit}"/>
                         <CheckBox Content="Auto-hide types whose reliability stays red" Margin="0,2,0,2"
                                   IsChecked="{Binding Settings.AutoHideUnreliableSignals}"/>
                         <TextBlock Style="{StaticResource Hint}"
                                    Text="Auto-hide mutes a type with a consistently red hit-rate (enough resolved samples) even if its 'Show in feed' box below is checked. Detection and scoring keep running either way."/>
 
-                        <TextBlock Style="{StaticResource SectionHeader}" Text="Reliability scoring (definition of &quot;success&quot;)"/>
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Reliability scoring"/>
                         <TextBlock Style="{StaticResource Hint}"
-                                   Text="A signal is scored a WIN if price reaches +Target ticks before -Stop ticks (asymmetric allowed, e.g. 6 / 10). Set these to match the move you actually trade so the meter's hit-rate is meaningful. Costs/P&amp;L are tracked by NT8, not here."/>
+                                   Text="A signal is scored a WIN if price reaches its type's +Target before -Stop ticks. Those barriers are now PER TYPE (Auto-Trade tab) and double as each type's auto-trade bracket, so the meter measures exactly the move that type is traded for. Costs/P&amp;L are tracked by NT8, not here."/>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Success target (ticks)"/>
-                            <TextBox   Grid.Row="0" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.PredictionTargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Success stop (ticks)"/>
-                            <TextBox   Grid.Row="1" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.PredictionStopTicks, UpdateSourceTrigger=PropertyChanged}"/>
-                            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Min resolved samples (before scoring)"/>
-                            <TextBox   Grid.Row="2" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.ReliabilityMinSamples, UpdateSourceTrigger=PropertyChanged}"/>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Min resolved samples (before scoring)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.ReliabilityMinSamples, UpdateSourceTrigger=PropertyChanged}"/>
                         </Grid>
 
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Spoofing / layering"/>
@@ -348,6 +346,34 @@
                             <TextBox   Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding Settings.AggressionAutoTrade.TargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
                             <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Stop (ticks)"/>
                             <TextBox   Grid.Row="1" Grid.Column="3" Margin="0,4" Text="{Binding Settings.AggressionAutoTrade.StopTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Order-flow imbalance (OFI)"/>
+                        <TextBlock Style="{StaticResource Hint}" Text="No price level → always enters at market. Validate its meter before enabling."/>
+                        <CheckBox Content="Auto-trade this type" Margin="0,2" IsChecked="{Binding Settings.OfiAutoTrade.Enabled}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="70"/><ColumnDefinition Width="110"/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Size (contracts)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Margin="0,4" Text="{Binding Settings.OfiAutoTrade.Size, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Target (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding Settings.OfiAutoTrade.TargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Stop (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="3" Margin="0,4" Text="{Binding Settings.OfiAutoTrade.StopTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Book imbalance"/>
+                        <TextBlock Style="{StaticResource Hint}" Text="No price level → always enters at market. Validate its meter before enabling."/>
+                        <CheckBox Content="Auto-trade this type" Margin="0,2" IsChecked="{Binding Settings.BookImbalanceAutoTrade.Enabled}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="70"/><ColumnDefinition Width="110"/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Size (contracts)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Margin="0,4" Text="{Binding Settings.BookImbalanceAutoTrade.Size, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Target (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding Settings.BookImbalanceAutoTrade.TargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Stop (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="3" Margin="0,4" Text="{Binding Settings.BookImbalanceAutoTrade.StopTicks, UpdateSourceTrigger=PropertyChanged}"/>
                         </Grid>
                     </StackPanel>
                 </ScrollViewer>

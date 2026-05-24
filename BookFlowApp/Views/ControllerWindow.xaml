@@ -191,6 +191,12 @@
                             Width="120" IsEnabled="{Binding CanLaunchDom}" Click="BtnLaunchDom_Click"/>
                     <Button Name="btnRefreshInstruments" Content="Refresh" Style="{StaticResource ProfessionalButtonStyle}"
                             Width="90" Margin="10,0,0,0" IsEnabled="{Binding IsConnected}" Click="BtnRefreshInstruments_Click"/>
+                    <Button Name="btnWipeSymbolHistory" Content="Wipe Sym Hist" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="100" Margin="10,0,0,0" Click="BtnWipeSymbolHistory_Click"
+                            ToolTip="Delete persisted signal history for the selected instrument's root (effective next session)"/>
+                    <Button Name="btnWipeAllHistory" Content="Wipe All Hist" Style="{StaticResource ProfessionalButtonStyle}"
+                            Width="100" Margin="6,0,0,0" Click="BtnWipeAllHistory_Click"
+                            ToolTip="Delete all persisted signal history across symbols (effective next session)"/>
                     <TextBlock Text="{Binding SelectedInstrumentDetails}"
                               Foreground="#FF95A5A6" FontSize="10" VerticalAlignment="Center"
                               Margin="15,0,0,0"/>

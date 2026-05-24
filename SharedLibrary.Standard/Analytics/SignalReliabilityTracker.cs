@@ -53,6 +53,15 @@ namespace BookFlow.Shared.Analytics
             _stats.Clear();
         }
 
+        /// <summary>Seed a type's resolved win/total (e.g. rebuilt from persisted history on startup).</summary>
+        public void Seed(MicrostructureSignalType type, int wins, int total)
+        {
+            if (total <= 0) return;
+            if (wins < 0) wins = 0;
+            if (wins > total) wins = total;
+            _stats[type] = new Stat { Wins = wins, Total = total };
+        }
+
         /// <summary>Begin forward-tracking a freshly emitted signal. Neutral bias is ignored.</summary>
         public void RegisterSignal(MicrostructureSignalType type, MicrostructureBias bias, long anchorTicks)
         {

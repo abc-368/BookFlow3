@@ -50,6 +50,7 @@ namespace BookFlow.Shared.Contracts
         // Microstructure detector thresholds (per-instrument; volume-scale-dependent, so they
         // should be tuned for the contract — ES carries far larger size than a thin future).
         private bool _enableMicrostructureSignals = true;
+        private bool _enableSignalAudit = false; // record forward outcomes for the feedback loop (off by default)
         private int _spoofMinChurn = 40;
         private double _spoofMaxTradedFraction = 0.15;
         private int _icebergMinRefill = 20;
@@ -62,12 +63,10 @@ namespace BookFlow.Shared.Contracts
         private double _bookImbalanceMinRatio = 0.6;
         private int _bookImbalanceMinSize = 50;
 
-        // Signal reliability scoring — defines "success": a win is price reaching +PredictionTargetTicks
-        // before -PredictionStopTicks (asymmetric allowed, e.g. 6 / 10). Tune these to match the move
-        // you actually trade, so the meter's hit-rate describes that move.
-        private int _predictionTargetTicks = 4;
-        private int _predictionStopTicks = 4;
-        private int _reliabilityMinSamples = 5;   // resolved samples before the strength meter lights up
+        // Resolved samples before the strength meter lights up. The per-type "success" barrier
+        // (target/stop ticks) lives on each AutoTradeConfig, so the meter measures the exact move
+        // that type would be traded for.
+        private int _reliabilityMinSamples = 5;
 
         // Per-type feed visibility — mute a noisy detector without disabling detection/scoring
         // (so reliability meters stay current and re-enabling is instant).
@@ -85,10 +84,21 @@ namespace BookFlow.Shared.Contracts
         private int _reliabilityGreenPercent = 60;     // a signal type at/above this % is "green" / actionable
         private int _autoTradeEntryTimeoutSeconds = 10; // cancel an unfilled limit entry after this
         private double _autoTradeMaxToxicity = 1.0;      // suppress auto-entry when flow toxicity exceeds this (1 = off)
-        private readonly AutoTradeConfig _spoofingAutoTrade = new AutoTradeConfig();
-        private readonly AutoTradeConfig _icebergAutoTrade = new AutoTradeConfig();
-        private readonly AutoTradeConfig _withdrawalAutoTrade = new AutoTradeConfig();
-        private readonly AutoTradeConfig _aggressionAutoTrade = new AutoTradeConfig { UseMarketOrder = true };
+        // Per-type target/stop (ticks): best-practice starting points by signal character. These
+        // drive BOTH the auto-trade bracket AND the reliability meter's success barrier for the type,
+        // so "green" always measures the exact move that type would be traded for. Tune live.
+        //   Spoof   5/4  — quick reversal snap when fake size is pulled.
+        //   Iceberg 8/4  — absorption can lead to a run; favourable R, tight stop if the level breaks.
+        //   Withdraw 6/4 — price moves into the vacuum left by pulled liquidity.
+        //   Aggress 6/4  — momentum continuation behind aggressive flow.
+        //   OFI     4/4  — immediate, short-lived continuation; take the quick move 1:1.
+        //   Book    3/3  — one-tick-ahead skew; tightest.
+        private readonly AutoTradeConfig _spoofingAutoTrade = new AutoTradeConfig { TargetTicks = 5, StopTicks = 4 };
+        private readonly AutoTradeConfig _icebergAutoTrade = new AutoTradeConfig { TargetTicks = 8, StopTicks = 4 };
+        private readonly AutoTradeConfig _withdrawalAutoTrade = new AutoTradeConfig { TargetTicks = 6, StopTicks = 4 };
+        private readonly AutoTradeConfig _aggressionAutoTrade = new AutoTradeConfig { UseMarketOrder = true, TargetTicks = 6, StopTicks = 4 };
+        private readonly AutoTradeConfig _ofiAutoTrade = new AutoTradeConfig { UseMarketOrder = true, TargetTicks = 4, StopTicks = 4 };
+        private readonly AutoTradeConfig _bookImbalanceAutoTrade = new AutoTradeConfig { UseMarketOrder = true, TargetTicks = 3, StopTicks = 3 };
 
         // Per-column configuration collection
         private ObservableCollection<ColumnConfig> _columns = new ObservableCollection<ColumnConfig>();
@@ -130,6 +140,7 @@ namespace BookFlow.Shared.Contracts
 
         // Microstructure detection settings (per-instrument)
         public bool EnableMicrostructureSignals { get => _enableMicrostructureSignals; set { if (_enableMicrostructureSignals != value) { _enableMicrostructureSignals = value; OnPropertyChanged(); } } }
+        public bool EnableSignalAudit { get => _enableSignalAudit; set { if (_enableSignalAudit != value) { _enableSignalAudit = value; OnPropertyChanged(); } } }
         public int SpoofMinChurn { get => _spoofMinChurn; set { if (_spoofMinChurn != value && value >= 1 && value <= 1000000) { _spoofMinChurn = value; OnPropertyChanged(); } } }
         public double SpoofMaxTradedFraction { get => _spoofMaxTradedFraction; set { if (_spoofMaxTradedFraction != value && value >= 0 && value <= 1) { _spoofMaxTradedFraction = value; OnPropertyChanged(); } } }
         public int IcebergMinRefill { get => _icebergMinRefill; set { if (_icebergMinRefill != value && value >= 1 && value <= 1000000) { _icebergMinRefill = value; OnPropertyChanged(); } } }
@@ -141,8 +152,6 @@ namespace BookFlow.Shared.Contracts
         public int OfiRadiusTicks { get => _ofiRadiusTicks; set { if (_ofiRadiusTicks != value && value >= 1 && value <= 256) { _ofiRadiusTicks = value; OnPropertyChanged(); } } }
         public double BookImbalanceMinRatio { get => _bookImbalanceMinRatio; set { if (_bookImbalanceMinRatio != value && value >= 0 && value <= 1) { _bookImbalanceMinRatio = value; OnPropertyChanged(); } } }
         public int BookImbalanceMinSize { get => _bookImbalanceMinSize; set { if (_bookImbalanceMinSize != value && value >= 1 && value <= 1000000) { _bookImbalanceMinSize = value; OnPropertyChanged(); } } }
-        public int PredictionTargetTicks { get => _predictionTargetTicks; set { if (_predictionTargetTicks != value && value >= 1 && value <= 1000) { _predictionTargetTicks = value; OnPropertyChanged(); } } }
-        public int PredictionStopTicks { get => _predictionStopTicks; set { if (_predictionStopTicks != value && value >= 1 && value <= 1000) { _predictionStopTicks = value; OnPropertyChanged(); } } }
         public int ReliabilityMinSamples { get => _reliabilityMinSamples; set { if (_reliabilityMinSamples != value && value >= 1 && value <= 1000) { _reliabilityMinSamples = value; OnPropertyChanged(); } } }
         public bool ShowSpoofingSignals { get => _showSpoofingSignals; set { if (_showSpoofingSignals != value) { _showSpoofingSignals = value; OnPropertyChanged(); } } }
         public bool ShowIcebergSignals { get => _showIcebergSignals; set { if (_showIcebergSignals != value) { _showIcebergSignals = value; OnPropertyChanged(); } } }
@@ -160,6 +169,8 @@ namespace BookFlow.Shared.Contracts
         public AutoTradeConfig IcebergAutoTrade => _icebergAutoTrade;
         public AutoTradeConfig WithdrawalAutoTrade => _withdrawalAutoTrade;
         public AutoTradeConfig AggressionAutoTrade => _aggressionAutoTrade;
+        public AutoTradeConfig OfiAutoTrade => _ofiAutoTrade;
+        public AutoTradeConfig BookImbalanceAutoTrade => _bookImbalanceAutoTrade;
         #endregion
 
         public void ResetToDefaults()
@@ -190,6 +201,7 @@ namespace BookFlow.Shared.Contracts
             NormalBackgroundColor = "#FF1A252F";
 
             EnableMicrostructureSignals = true;
+            EnableSignalAudit = false;
             SpoofMinChurn = 40;
             SpoofMaxTradedFraction = 0.15;
             IcebergMinRefill = 20;
@@ -201,8 +213,6 @@ namespace BookFlow.Shared.Contracts
             OfiRadiusTicks = 3;
             BookImbalanceMinRatio = 0.6;
             BookImbalanceMinSize = 50;
-            PredictionTargetTicks = 4;
-            PredictionStopTicks = 4;
             ReliabilityMinSamples = 5;
             ShowSpoofingSignals = true;
             ShowIcebergSignals = true;

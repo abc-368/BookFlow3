@@ -53,6 +53,18 @@ namespace BookFlow.App.Views
             System.Console.WriteLine($"🎯🎯🎯 [CONTROLLER WINDOW] ViewModel.LaunchSelectedInstrumentDom() completed! 🎯🎯🎯");
         }
 
+        private void BtnWipeSymbolHistory_Click(object sender, RoutedEventArgs e)
+        {
+            ViewModel.WipeHistoryForSelected();
+        }
+
+        private void BtnWipeAllHistory_Click(object sender, RoutedEventArgs e)
+        {
+            var r = System.Windows.MessageBox.Show("Delete ALL persisted signal history for every symbol? (Takes effect next session.)",
+                "Wipe All History", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (r == MessageBoxResult.Yes) ViewModel.WipeAllHistory();
+        }
+
         private void BtnSystemLog_Click(object sender, RoutedEventArgs e)
         {
             if (_logViewer == null || !_logViewer.IsVisible)

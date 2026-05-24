@@ -65,6 +65,18 @@ namespace BookFlow.App.Interfaces
 
         /// <summary>Decayed aggressive-flow toxicity in [0,1]; 1 = fully one-sided flow.</summary>
         double FlowToxicity { get; }
+
+        /// <summary>Root / continuous symbol (e.g. "ES" for "ES 06-26"); the per-symbol history key.</summary>
+        string ContinuousName { get; }
+
+        /// <summary>Current trading session (US/Eastern basis).</summary>
+        TradingSession CurrentSession { get; }
+
+        /// <summary>Recorded signal outcomes for persistence (thread-safe snapshot; empty unless audit is on).</summary>
+        IReadOnlyList<SignalOutcome> ExportOutcomes();
+
+        /// <summary>Load persisted outcomes and rebuild each type's meter at its current barrier.</summary>
+        void ImportOutcomes(IEnumerable<SignalOutcome> outcomes);
         
         /// <summary>
         /// Clears all DOM data structures including order books, price levels, and market data.

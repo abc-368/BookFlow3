@@ -119,6 +119,25 @@ namespace BookFlow.Tests
         }
 
         [Fact]
+        public void Ofi_Enabled_FiresMarket()
+        {
+            var s = ArmedSettings();
+            s.OfiAutoTrade.Enabled = true;
+            s.OfiAutoTrade.TargetTicks = 6;
+            s.OfiAutoTrade.StopTicks = 6;
+            var cap = new Capture();
+            var trader = new SignalAutoTrader(s, 0.25m, cap.Submit);
+
+            // OFI carries no price level => market entry, buy on Bias.Up.
+            trader.OnSignal(Sig(MicrostructureSignalType.OrderFlowImbalance, MicrostructureBias.Up, null, 0.75));
+
+            Assert.Equal(1, cap.Calls);
+            Assert.True(cap.IsBuy);
+            Assert.False(cap.EntryIsLimit);
+            Assert.Equal(0, cap.Timeout); // market => no entry timeout
+        }
+
+        [Fact]
         public void OnePositionPerInstrument_BlocksWhilePendingOrOpen()
         {
             var cap = new Capture();

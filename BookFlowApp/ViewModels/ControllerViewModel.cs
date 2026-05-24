@@ -9,7 +9,9 @@ using BookFlow.App.Services;
 using BookFlow.App.Views;
 using BookFlow.App.Interfaces;
 using BookFlow.App.Engine;
+using BookFlow.App.Persistence;
 using BookFlow.Shared.Contracts; // DomSettings now shared
+using BookFlow.Shared.Analytics; // TradingContext.Root
 using System.Windows.Media;
 using System.Collections.Specialized;
 
@@ -23,6 +25,7 @@ namespace BookFlow.App.ViewModels
         private bool _isConnected = false;
         private bool _disposed = false;
         private TickerInfo? _selectedInstrument;
+        private readonly System.Threading.Timer _saveTimer;
 
         // Status properties used by XAML
         private System.Windows.Media.Brush _connectionStatusBrush = System.Windows.Media.Brushes.Gray;
@@ -40,6 +43,9 @@ namespace BookFlow.App.ViewModels
             _systemLog = new StringBuilder();
             // Keep InstrumentCount in sync
             AvailableInstruments.CollectionChanged += OnInstrumentsChanged;
+            // Crash-safety: periodically persist open DOMs' settings + history.
+            _saveTimer = new System.Threading.Timer(OnPeriodicSave, null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            _saveTimer.Change(TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
         }
 
         private void OnInstrumentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -214,22 +220,67 @@ namespace BookFlow.App.ViewModels
             var existing = _activeDomWindows.FirstOrDefault(d => d.InstrumentName == _selectedInstrument.InstrumentName);
             if (existing != null) { existing.Window?.Activate(); return; }
             var tradingService = new NT8TradingService();
+
+            // Persistence: settings always restored; history kept by default (keyed by root/continuous).
+            var root = TradingContext.Root(_selectedInstrument.InstrumentName);
+            var settings = new DomSettings();
+            SettingsStore.ApplyIfPresent(root, settings);
+
             // Use the TickerId provided by NT8 to filter stream correctly
-            var domEngine = new DomEngine(_selectedInstrument.InstrumentName, _selectedInstrument.TickerId, tradingService, (decimal)_selectedInstrument.TickSize, (decimal)_selectedInstrument.PointValue, new DomSettings());
+            var domEngine = new DomEngine(_selectedInstrument.InstrumentName, _selectedInstrument.TickerId, tradingService, (decimal)_selectedInstrument.TickSize, (decimal)_selectedInstrument.PointValue, settings);
+            domEngine.ImportOutcomes(HistoryStore.Load(root)); // wiped => empty list
             _ = domEngine.StartAsync(_sharedDataFeed);
             var vm = new DomViewModel(domEngine, tradingService);
             var win = new DomGridWindow(vm) { Title = $"DOM - {_selectedInstrument.InstrumentName}" };
             var info = new DomWindowInfo { InstrumentName = _selectedInstrument.InstrumentName, TickerId = _selectedInstrument.TickerId, Window = win, ViewModel = vm, Engine = domEngine };
             _activeDomWindows.Add(info); OnPropertyChanged(nameof(ActiveDomCount));
-            win.Closed += (s, e) => { domEngine.Dispose(); _activeDomWindows.Remove(info); OnPropertyChanged(nameof(ActiveDomCount)); };
+            win.Closed += (s, e) =>
+            {
+                try { SettingsStore.Save(root, settings); HistoryStore.Save(root, domEngine.ExportOutcomes()); }
+                catch (Exception ex) { LogMessage("Save on close error: " + ex.Message); }
+                domEngine.Dispose(); _activeDomWindows.Remove(info); OnPropertyChanged(nameof(ActiveDomCount));
+            };
             win.Show();
+        }
+
+        /// <summary>Wipe persisted history for the selected instrument's root (effective next session).</summary>
+        public void WipeHistoryForSelected()
+        {
+            var name = _selectedInstrument?.InstrumentName;
+            if (string.IsNullOrEmpty(name)) { LogMessage("Wipe: no instrument selected."); return; }
+            var root = TradingContext.Root(name);
+            HistoryStore.Wipe(root);
+            LogMessage($"Wiped history for {root} (takes effect next session).");
+        }
+
+        /// <summary>Wipe all persisted history across symbols (effective next session).</summary>
+        public void WipeAllHistory()
+        {
+            int n = HistoryStore.WipeAll();
+            LogMessage($"Wiped all history ({n} file(s); takes effect next session).");
+        }
+
+        // Periodic crash-safety save of every open DOM's settings + history (5 min).
+        private void OnPeriodicSave(object? state)
+        {
+            try
+            {
+                foreach (var d in _activeDomWindows.ToList())
+                {
+                    if (d.Engine == null) continue;
+                    var root = TradingContext.Root(d.InstrumentName);
+                    SettingsStore.Save(root, d.Engine.Settings);
+                    HistoryStore.Save(root, d.Engine.ExportOutcomes());
+                }
+            }
+            catch (Exception ex) { LogMessage("Periodic save error: " + ex.Message); }
         }
 
         public void ClearLog() { _systemLog.Clear(); OnPropertyChanged(nameof(SystemLogText)); }
         private void LogMessage(string msg) { _systemLog.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] {msg}"); if (_systemLog.Length > 50000) { var lines = _systemLog.ToString().Split('\n'); _systemLog.Clear(); _systemLog.AppendLine(string.Join("\n", lines.Skip(Math.Max(0, lines.Length - 500)))); } OnPropertyChanged(nameof(SystemLogText)); }
 
         public event PropertyChangedEventHandler? PropertyChanged; protected virtual void OnPropertyChanged([CallerMemberName] string? n = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
-        public void Dispose() { if (_disposed) return; _disposed = true; foreach (var dom in _activeDomWindows.ToList()) { dom.Engine?.Dispose(); dom.Window?.Close(); } _activeDomWindows.Clear(); _sharedDataFeed?.Dispose(); }
+        public void Dispose() { if (_disposed) return; _disposed = true; try { _saveTimer?.Dispose(); } catch { } OnPeriodicSave(null); foreach (var dom in _activeDomWindows.ToList()) { dom.Engine?.Dispose(); dom.Window?.Close(); } _activeDomWindows.Clear(); _sharedDataFeed?.Dispose(); }
     }
 
     public class DomWindowInfo

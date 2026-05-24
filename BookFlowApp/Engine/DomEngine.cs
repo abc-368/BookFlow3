@@ -46,6 +46,9 @@ namespace BookFlow.App.Engine
         private readonly MicrostructureDetector _detector = new MicrostructureDetector();
         // Forward-evaluates emitted signals by price-level barriers to score each TYPE's hit-rate.
         private readonly SignalReliabilityTracker _reliability = new SignalReliabilityTracker();
+        // Feedback loop (off by default): records each signal's forward path for offline re-scoring.
+        private readonly SignalOutcomeRecorder _outcomeRecorder = new SignalOutcomeRecorder();
+        private int _auditLogCounter;
         private System.Threading.Timer? _microstructureTimer;
         private IReadOnlyList<L2AnalyticsSlot>? _prevVicinity;
         private const int MicroRadiusTicks = 30;
@@ -1054,13 +1057,17 @@ namespace BookFlow.App.Engine
 
                 // Reliability: resolve outstanding predictions against the current mid first, then
                 // stamp each new signal with the prior hit-rate of its type and start tracking it.
-                _reliability.TargetTicks = _settings.PredictionTargetTicks;
-                _reliability.StopTicks = _settings.PredictionStopTicks;
                 _reliability.MinSamples = _settings.ReliabilityMinSamples;
                 decimal? mid = (bb.HasValue && ba.HasValue) ? (bb.Value + ba.Value) / 2m : (bb ?? ba);
                 long? midTicks = (mid.HasValue && _tickSize > 0)
                     ? (long?)Math.Round(mid.Value / _tickSize, MidpointRounding.AwayFromZero) : null;
-                if (midTicks.HasValue) _reliability.OnPriceSample(midTicks.Value);
+                bool audit = _settings.EnableSignalAudit;
+                var session = TradingContext.CurrentSession(DateTime.UtcNow);
+                if (midTicks.HasValue)
+                {
+                    _reliability.OnPriceSample(midTicks.Value);
+                    if (audit) _outcomeRecorder.OnPriceSample(midTicks.Value);
+                }
 
                 for (int i = 0; i < signals.Count; i++)
                 {
@@ -1073,15 +1080,105 @@ namespace BookFlow.App.Engine
 
                     if (midTicks.HasValue)
                     {
+                        // Evaluate each signal against ITS type's target/stop, so the meter measures
+                        // exactly the move that type would be traded for.
+                        var bar = BarrierFor(sig.Type);
+                        _reliability.TargetTicks = bar.target;
+                        _reliability.StopTicks = bar.stop;
                         decimal anchor = sig.Price ?? mid!.Value;
                         long anchorTicks = (long)Math.Round(anchor / _tickSize, MidpointRounding.AwayFromZero);
                         _reliability.RegisterSignal(sig.Type, sig.Bias, anchorTicks);
+                        if (audit) _outcomeRecorder.Register(sig.Type, sig.Bias, anchorTicks, rel.Ratio, DateTime.UtcNow.Ticks, session);
                     }
 
                     _microstructureSubject.OnNext(sig);
                 }
+
+                // Surface bracket suggestions roughly once a minute while auditing (4 Hz → 240 ticks).
+                if (audit && ++_auditLogCounter >= 240)
+                {
+                    _auditLogCounter = 0;
+                    LogBracketSuggestions();
+                }
             }
             catch (Exception ex) { OnError("Microstructure detection error", ex); }
+        }
+
+        // Per-type reliability success barrier = that type's auto-trade bracket (single source of truth).
+        private (int target, int stop) BarrierFor(MicrostructureSignalType type)
+        {
+            var c = type switch
+            {
+                MicrostructureSignalType.Spoofing => _settings.SpoofingAutoTrade,
+                MicrostructureSignalType.Iceberg => _settings.IcebergAutoTrade,
+                MicrostructureSignalType.LiquidityWithdrawal => _settings.WithdrawalAutoTrade,
+                MicrostructureSignalType.AggressionImbalance => _settings.AggressionAutoTrade,
+                MicrostructureSignalType.OrderFlowImbalance => _settings.OfiAutoTrade,
+                MicrostructureSignalType.BookImbalance => _settings.BookImbalanceAutoTrade,
+                _ => null,
+            };
+            return c != null ? (c.TargetTicks, c.StopTicks) : (4, 4);
+        }
+
+        // Feedback loop: log each type's realized win-rate/expectancy at its CURRENT bracket vs the
+        // bracket that would have maximized expectancy on the recorded paths (suggest-only).
+        private void LogBracketSuggestions()
+        {
+            try
+            {
+                var all = _outcomeRecorder.Snapshot();
+                if (all.Count == 0) return;
+                foreach (MicrostructureSignalType t in new[]
+                {
+                    MicrostructureSignalType.Spoofing, MicrostructureSignalType.Iceberg,
+                    MicrostructureSignalType.LiquidityWithdrawal, MicrostructureSignalType.AggressionImbalance,
+                    MicrostructureSignalType.OrderFlowImbalance, MicrostructureSignalType.BookImbalance,
+                })
+                {
+                    var subset = all.Where(o => o.Type == t).ToList();
+                    if (subset.Count == 0) continue;
+                    var cur = BarrierFor(t);
+                    var curScore = BracketReScorer.Evaluate(subset, cur.target, cur.stop);
+                    var best = BracketReScorer.Suggest(subset);
+                    BookFlow.App.Diagnostics.BookFlowLog.Info($"Audit:{InstrumentName}",
+                        $"{t}: current {cur.target}/{cur.stop} -> win {curScore.WinRate:P0} exp {curScore.ExpectancyTicks:+0.0;-0.0}t (n={curScore.Samples})" +
+                        (best.Samples > 0
+                            ? $"; suggest {best.TargetTicks}/{best.StopTicks} -> win {best.WinRate:P0} exp {best.ExpectancyTicks:+0.0;-0.0}t (n={best.Samples})"
+                            : "; suggest: insufficient samples"));
+                }
+            }
+            catch (Exception ex) { OnError("Bracket suggestion logging error", ex); }
+        }
+
+        /// <summary>Root / continuous symbol (e.g. "ES" for "ES 06-26"); the per-symbol history key.</summary>
+        public string ContinuousName => TradingContext.Root(InstrumentName);
+
+        /// <summary>Current trading session (US/Eastern basis).</summary>
+        public TradingSession CurrentSession => TradingContext.CurrentSession(DateTime.UtcNow);
+
+        /// <summary>Recorded signal outcomes (for persistence). Empty unless signal audit is enabled.</summary>
+        public IReadOnlyList<SignalOutcome> ExportOutcomes() => _outcomeRecorder.Snapshot();
+
+        /// <summary>Load persisted outcomes and rebuild each type's meter at its current barrier.</summary>
+        public void ImportOutcomes(IEnumerable<SignalOutcome> outcomes)
+        {
+            if (outcomes == null) return;
+            var list = outcomes as IList<SignalOutcome> ?? new List<SignalOutcome>(outcomes);
+            if (list.Count == 0) return;
+            _outcomeRecorder.LoadCompleted(list);
+            foreach (MicrostructureSignalType t in new[]
+            {
+                MicrostructureSignalType.Spoofing, MicrostructureSignalType.Iceberg,
+                MicrostructureSignalType.LiquidityWithdrawal, MicrostructureSignalType.AggressionImbalance,
+                MicrostructureSignalType.OrderFlowImbalance, MicrostructureSignalType.BookImbalance,
+            })
+            {
+                var subset = list.Where(o => o.Type == t).ToList();
+                if (subset.Count == 0) continue;
+                var bar = BarrierFor(t);
+                var sc = BracketReScorer.Evaluate(subset, bar.target, bar.stop);
+                _reliability.Seed(t, sc.Wins, sc.Wins + sc.Losses);
+            }
         }
 
         public StatisticsSnapshot GetStatisticsSnapshot()
@@ -1220,6 +1317,7 @@ namespace BookFlow.App.Engine
 
                 // Drop in-flight predictions and per-type hit-rate history.
                 _reliability.Reset();
+                _outcomeRecorder.Reset();
                 _toxBuyVol = _toxSellVol = _flowToxicity = 0;
             }
             

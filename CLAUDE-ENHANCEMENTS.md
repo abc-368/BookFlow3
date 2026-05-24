@@ -312,11 +312,11 @@ Everything below was built after Increments 1–5 landed. It sits on top of the 
 - Files: `Models/SignalFeedItem.cs`, `DomViewModel.OnSignal`, `DomGridWindow.xaml`.
 
 ### 11.7 Signal reliability meter — prediction power, scored by price level (not time)
-- `SignalReliabilityTracker` (in `SharedLibrary.Standard/Analytics`) forward-evaluates each emitted signal by **price-level barriers**: WIN if price reaches +`PredictionTargetTicks` in the predicted direction before −`PredictionStopTicks` against (asymmetric allowed, e.g. 6/10 — a first-passage / triple-barrier test). **Note:** this is a hit-rate at *those barriers with zero costs*, not a P&L predictor — to make "green" describe what you trade, set these to match your bracket; real P&L/costs are tracked by NT8.
+- `SignalReliabilityTracker` (in `SharedLibrary.Standard/Analytics`) forward-evaluates each emitted signal by **price-level barriers**: WIN if price reaches +Target in the predicted direction before −Stop against (asymmetric allowed — a first-passage / triple-barrier test). **The barrier is per-type** (see §11.17) and equals that type's auto-trade bracket, so the meter measures exactly the move the type is traded for. **Note:** this is a hit-rate at those barriers with zero costs, not a P&L predictor; real P&L/costs are tracked by NT8.
 - Resolved outcomes accumulate a **per-type hit-rate** (Beta(2,2)-smoothed). A new feed line is stamped with that type's hit-rate **as known at print time** — past lines are never revised, so there is no look-ahead bias and the UI stays append-only.
 - **Visual:** a right-aligned 5-segment meter `▰▰▰▱▱`, gray while "learning" (< `ReliabilityMinSamples` resolved), then red < 45% → amber → green > 60%; tooltip shows the rate and sample count.
 - **Performance:** `RegisterSignal` / `OnPriceSample` / `GetReliability` are O(pending)/O(1), run inside the existing 4 Hz tick. Pending list capped at 64 (drop-oldest); reset on `ClearAllData`. The L1/L2 path, book updates, and 60 fps render loop are untouched.
-- Configurable success definition on `DomSettings`: `PredictionTargetTicks` / `PredictionStopTicks` (default 4/4, asymmetric allowed), `ReliabilityMinSamples` (default 5), surfaced in the Signals tab. Auto-trade default bracket also defaults to 4/4 so "green" matches the default trade.
+- Success definition is **per-type** (§11.17). Only `ReliabilityMinSamples` (default 5) remains global, in the Signals tab.
 - Files: `SignalReliabilityTracker.cs`, `MicrostructureDetector.cs` (signal carries `ReliabilityBars/Ratio/Samples/Learning`), `DomEngine.OnMicrostructureTick`, `SignalFeedItem.cs`, `DomGridWindow.xaml`.
 
 ### 11.8 Professional DOM settings dialog
@@ -331,7 +331,7 @@ Everything below was built after Increments 1–5 landed. It sits on top of the 
 - .NET Reactor obfuscation was removed from the build (per `*.dotnet_reactor.targets` being disabled) to keep builds and debugging transparent.
 
 ### 11.11 Test coverage
-- xUnit project (`BookFlow.Tests`, net9.0-windows) — **62 tests**, all green. Covers `SharedRingBuffer`, WCF contract mapping, `DomRowData`, `DomEngine` (incl. snapshot seed, the locked-market trade-attribution P0 fix, and bracket-request construction), `L2AnalyticsWindow`, `MicrostructureDetector` (incl. bias), `SignalReliabilityTracker`, and `SignalAutoTrader` (arming/green-gate/concurrency).
+- xUnit project (`BookFlow.Tests`, net9.0-windows) — **63 tests**, all green. Covers `SharedRingBuffer`, WCF contract mapping, `DomRowData`, `DomEngine` (incl. snapshot seed, the locked-market trade-attribution P0 fix, and bracket-request construction), `L2AnalyticsWindow`, `MicrostructureDetector` (incl. bias), `SignalReliabilityTracker`, and `SignalAutoTrader` (arming/green-gate/concurrency).
 
 ### 11.12 Signals rail — full-height + virtualized scrolling
 - The order-flow panel is now a **full-height right rail** spanning the whole DOM window (outer 2-column grid; panel at `Grid.Column="1" Grid.RowSpan="4"`), not just the ladder row — so it matches the window height and resizes with it. When the `Σ` toggle is off, the column collapses to 0 width (window shrinks back to ladder width).
@@ -372,7 +372,7 @@ Added the two best-evidenced short-horizon microstructure predictors as first-cl
 - **Order-flow imbalance (OFI)** — Cont–Kukanov–Stoikov, generalized over a near-touch vicinity (`OfiRadiusTicks`, default 3): `OFI = (bidAdds − bidCancels − sellsHittingBid) − (askAdds − askCancels − buysLiftingAsk)` over the interval. Positive → buy pressure (UP). Threshold `OfiMinImbalance` (default 150). The single best-supported predictor in the literature.
 - **Book imbalance** — `(Qbid − Qask)/(Qbid + Qask)` at the touch (read from the current snapshot, no diff needed). Threshold `BookImbalanceMinRatio` (0.6) + `BookImbalanceMinSize` (50). A documented one-tick-ahead skew.
 - Fully **observable/measurable** now: they flow through the feed (OFI green/red by bias, book imbalance purple), per-type **Show-in-feed** toggles (`ShowOfiSignals`/`ShowBookImbalanceSignals`), thresholds in the Signals tab, and the **reliability meter** (so you can see their real hit-rate at your configured success barrier).
-- **Deliberately NOT auto-traded yet** — `SignalAutoTrader.ConfigFor` returns null for them, so they're observe-only. Per the "measure before you trust" workflow: watch their meters first, then we add auto-trade configs once they prove out.
+- **Auto-trade wiring (added after initial observe-only release):** `OfiAutoTrade` / `BookImbalanceAutoTrade` configs + `SignalAutoTrader.ConfigFor` cases + Auto-Trade tab rows. Both carry no price level → **market entry** (like aggression). Default disabled — still **watch their reliability meters before enabling**.
 - Follow-ups: **VPIN-style toxicity filter** now shipped (see §11.16). Still deferred: **micro-price** for a better entry/fair-value anchor (no consumer until OFI/book are auto-traded).
 - Honest caveat: these are very short-horizon, small, cost/latency-sensitive edges, and on NT8's aggregated L2 (no per-order queue position) they lose some sharpness — better-founded than the original four, not magic.
 - Tested: `MicrostructureDetectorTests` add OFI (bid-adds/ask-cancels → UP) and book-imbalance (bid-heavy → UP) cases.
@@ -385,4 +385,77 @@ A regime filter that stands the auto-trader aside in toxic (one-sided / informed
 - UI: "Max flow toxicity (0–1; 1 = off)" on the Auto-Trade tab. Tested: `SignalAutoTraderTests` (toxic > max → no fire; calm ≤ max → fires).
 - A pragmatic VPIN stand-in (no volume-bucket machinery); tune live. The full micro-price work remains deferred.
 - Files: `Engine/DomEngine.cs`, `Interfaces/IDomEngine.cs`, `Contracts/DomSettings.cs`, `Engine/SignalAutoTrader.cs`, `ViewModels/DomViewModel.cs`, `Views/GridSettingsWindow.xaml`.
+
+### 11.17 OFI/book auto-trade + per-type target/stop (single source of truth)
+Sim101 round-trip of the full auto-trade loop confirmed (entry → fill → OCO target/stop). Two changes followed:
+- **OFI + book imbalance are now auto-tradable** (`OfiAutoTrade`/`BookImbalanceAutoTrade` configs, `SignalAutoTrader.ConfigFor` cases, Auto-Trade tab rows). Both carry no price level → **market entry** (like aggression). Disabled by default.
+- **Per-type target/stop replaces the global success barrier.** The removed global `PredictionTargetTicks/StopTicks` are superseded by each type's `AutoTradeConfig.TargetTicks/StopTicks`, which now drive **both** the auto-trade bracket **and** the reliability meter's success barrier for that type (`DomEngine.BarrierFor` sets the tracker barrier per signal before `RegisterSignal`). This guarantees "green" measures the exact move the type is traded for — preventing the meter-vs-trade divergence that earlier showed "60% but losing".
+- **Best-practice default brackets** (ticks), differentiated by signal character (reasoned starting points, tune live): Spoof 5/4, Iceberg 8/4, Withdrawal 6/4, Aggression 6/4, OFI 4/4, Book 3/3.
+- Operating at **1 lot**, so the partial-fill bracket limitation is moot (no partials).
+- Files: `Contracts/DomSettings.cs`, `Contracts/AutoTradeConfig.cs`, `Engine/DomEngine.cs` (`BarrierFor`), `Engine/SignalAutoTrader.cs`, `Views/GridSettingsWindow.xaml`.
+
+---
+
+## 12. Per-signal feedback loop (committed roadmap, phased)
+
+Goal: close the loop between **prediction** (the meter) and **execution** (real fills) per signal type, so we can (1) explain mismatches, (2) calibrate/suggest parameters, (3) optionally auto-tune — addressing the "green meter, negative P&L" dissonance. **The objective is to maximize *realized* expectancy and to make "green" honest — not to chase an over-optimistic meter.** Disabled by default.
+
+### Why prediction ≠ realized (even ignoring fees)
+- **Mid vs fill / spread** — meter scores the *mid* crossing the barrier from the anchor; the trade enters at bid/ask, the target is a *limit* (needs a touch), the stop is a *market* (slips). Structural drag.
+- **Anchor/time mismatch** — meter starts at signal time/anchor; the trade starts at fill time/price (seconds later for a limit).
+- **4 Hz sampling** — a fast wick can trip a real StopMarket the meter misses → meter optimistic for tight stops.
+- **Touch vs cross** — meter "win" = mid touched target once; the trade needs the target limit to actually fill.
+
+### Key enabling insight
+Record each signal's **forward price path**; then re-score *any* candidate target/stop **offline** against the same recorded population via first-passage — no live trial-and-error, no per-setting sample fragmentation. (Works for trade params target/stop/offset; for *detection* thresholds only *raising* them can be tested offline.)
+
+### §12.1 — Increment 1 SHIPPED: the analytical engine (default off)
+- `SignalOutcomeRecorder` (`SharedLibrary.Standard/Analytics`) — on each fired signal, captures the direction-adjusted forward mid path over a fixed horizon (80 samples ≈ 20 s), independent of the live meter's early-resolving barrier. Bounded (≤64 in-flight, ≤5000 retained).
+- `BracketReScorer` (`SharedLibrary.Standard/Analytics`) — pure: `Evaluate(outcomes, T, S)` → win-rate + gross expectancy (ticks, fees aside) by first-passage; `Suggest(outcomes, minSamples)` → the bracket maximizing expectancy over a grid, gated by sample size.
+- `DomSettings.EnableSignalAudit` (default **false**) + Signals-tab checkbox. When on, `DomEngine` feeds the recorder and ~once/minute logs, per type, the realized win-rate/expectancy at the **current** bracket vs the **suggested** bracket (`BookFlowLog`, category `Audit:<instrument>`).
+- Validation workflow (you run one signal type at a time): compare the logged meter/path win-rate against **NT8's Trades tab** realized win-rate for the same window.
+- Tests: `BracketReScorerTests` (first-passage, expectancy, suggestion + min-sample gating), `SignalOutcomeRecorderTests` (path capture, direction inversion, neutral ignored).
+
+### §12.2 — Increment 2 NEXT: calibration + suggestions surfaced
+- **Calibrate the meter to execution**: evaluate the barrier from the expected/actual fill (not the anchor), target as a touch, stop as slipped — so "green" predicts the trade. (Needs fill correlation, below.)
+- **Fill correlation**: tie each auto-traded signal to its real entry/exit fills via `ClientOrderId`/OCO legs for automated predicted-vs-realized attribution (slippage, meter-won-but-trade-lost counts).
+- **Suggestions UI** (Feedback tab): per type show predicted vs realized, the attribution, and the suggested bracket with Wilson confidence + sample size.
+- **Persistence (prerequisite)**: settings + accumulated outcome/reliability history to disk per instrument — otherwise every restart wipes tuning and re-enters "learning". (See Tier-1 pending items.)
+
+### §12.3 — Increment 3 LAST, GUARDED: auto-tune (high-risk)
+Online adaptive control on a noisy, non-stationary process — easy to do badly (overfit last-N, oscillate). If built: significance gating (min N, CI), slow/bounded adaptation, **shadow mode** (track would-have-been before applying), per-regime separation, kill-switch, **default off**, and prefer **one-click-apply over fully autonomous**. Deferred until §12.1–12.2 prove the suggestions are consistently good and stable.
+
+### Honest caveats
+Short-horizon edges are small, cost/latency-sensitive, and decay; offline re-scoring needs enough samples to avoid curve-fitting (hence the min-sample gate and CI), and non-stationarity means a tune good this morning may be wrong this afternoon. The loop informs judgment; it isn't a money printer.
+
+---
+
+## 13. Persistence & session/contract context (shipped — §12.2 prerequisite)
+
+The feedback loop and tuning are pointless if they reset every launch, so persistence landed next.
+
+### Storage
+- `%UserProfile%\Documents\BookFlow\Settings\<root>.json` and `…\History\<root>.json` (`BookFlow.App.Persistence.BookFlowPaths`).
+- **Keyed by root / continuous symbol** (`TradingContext.Root`: "ES 06-26" → "ES") so settings *and* history **survive quarterly contract rolls**.
+
+### Settings (always persisted)
+- `SettingsStore` + an explicit `DomSettingsSnapshot` DTO (System.Text.Json kept in the **App** layer, not Shared — no NT8 dependency). Persists the signal/trade tuning subset: detector thresholds (incl. OFI/book), per-type `AutoTradeConfig` (enable/market/offset/target/stop/size), green %, toxicity cap, entry timeout, min-samples, audit flag, show-in-feed flags.
+- **`AutoTradeArmed` is deliberately NOT persisted** — arming is always a fresh per-session decision. (Column/font/color layout not persisted yet.)
+- Loaded onto the `DomSettings` in `ControllerViewModel.LaunchSelectedInstrumentDom` before the engine starts.
+
+### History (keep by default, explicit wipe)
+- `HistoryStore` saves/loads the recorded `SignalOutcome` list (forward paths + the **session** tag) per root. On launch the engine `ImportOutcomes(...)` reloads them and **rebuilds each type's meter** at its current barrier (so "green" is immediately available), and the recorder resumes for further re-scoring.
+- **Wipe** = delete the file(s), effective next session: controller buttons **"Wipe Sym Hist"** (selected root) and **"Wipe All Hist"** (confirmed). No keep-toggle — keep is implicit.
+- **Crash safety**: a 5-minute timer in `ControllerViewModel` persists every open DOM's settings + history; also saved on window close and on controller dispose. `SignalOutcomeRecorder.Snapshot()` is taken under a lock since the 4 Hz thread mutates the list.
+
+### Session & continuous/traded display
+- `TradingContext.Classify` / `CurrentSession` — US/Eastern basis, contiguous Asia / London / US buckets (London 03–08, US 08–17, Asia otherwise). Each recorded outcome is **tagged with its session** (`SignalOutcome.Session`) for future per-session segmentation (the chosen "display + tag now, segment later" path).
+- DOM header now shows the **traded contract** (e.g. `ES 06-26`), the **continuous** (`ES cont`), and a colored **session chip** (refreshed ~every 4 s; TZ conversion is throttled off the 60 fps tick).
+- New `IDomEngine` members: `ContinuousName`, `CurrentSession`, `ExportOutcomes()`, `ImportOutcomes()`.
+
+### Tests
+- `TradingContextTests` (session-by-hour, root-suffix stripping), `DomSettingsSnapshotTests` (tuning round-trips; `AutoTradeArmed` never restored). *(Pending a clean run — the app was open and locking the output DLLs.)*
+
+### Pending next
+Per-session **segmentation** of reliability/suggestions (data is already tagged); persisting column/font layout; the §12.2 calibration + suggestions UI; then guarded §12.3 auto-tune.
 

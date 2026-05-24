@@ -280,10 +280,14 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="{Binding InstrumentName}" Foreground="White" 
+                    <TextBlock Text="{Binding TradedContract}" Foreground="White"
                               FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
-                    <TextBlock Text=" - High Performance DOM" Foreground="#FF95A5A6" 
-                              FontSize="10" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                    <TextBlock Text="{Binding ContinuousName, StringFormat={}{0} cont}" Foreground="#FF95A5A6"
+                              FontSize="10" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <Border CornerRadius="3" Padding="6,1" Margin="10,0,0,0" VerticalAlignment="Center"
+                            Background="{Binding SessionColorHex, Converter={StaticResource HexToBrushConverter}}">
+                        <TextBlock Text="{Binding SessionText}" Foreground="White" FontSize="10" FontWeight="SemiBold"/>
+                    </Border>
                 </StackPanel>
                 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0">
