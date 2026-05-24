@@ -119,6 +119,12 @@ namespace BookFlow.App.Services
             }
         }
 
+        public async Task<BookFlow.Shared.Service.OrderAck> SubmitBracketOrderAsync(BookFlow.Shared.Service.BracketOrderRequest request)
+        {
+            if (!_connected) throw new InvalidOperationException("Not connected");
+            return await _serviceClient.SubmitBracketOrderAsync(request);
+        }
+
         public async Task<PortfolioStateMessage> RequestPortfolioStateAsync()
         {
             if (!_connected) throw new InvalidOperationException("Not connected");

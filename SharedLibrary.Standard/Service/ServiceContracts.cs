@@ -105,6 +105,27 @@ namespace BookFlow.Shared.Service
         [DataMember] public DateTime ClientUtcTime { get; set; }
     }
 
+    /// <summary>
+    /// A single-shot bracket entry: the AddOn submits the entry, and when it fills places a
+    /// profit-target limit + protective-stop as a server-side OCO pair (one-cancels-other),
+    /// sized to the fill and priced relative to the average fill. Target/Stop are offsets in ticks.
+    /// </summary>
+    [DataContract]
+    public class BracketOrderRequest
+    {
+        [DataMember] public string ClientOrderId { get; set; }
+        [DataMember] public string AccountName { get; set; }        // optional; server resolves if single account eligible
+        [DataMember] public string InstrumentName { get; set; }
+        [DataMember] public BookFlowSide Side { get; set; }         // entry direction (Buy/Sell)
+        [DataMember] public bool EntryIsLimit { get; set; }         // true = limit entry, false = market
+        [DataMember] public double EntryLimitPrice { get; set; }    // used when EntryIsLimit
+        [DataMember] public int Quantity { get; set; }
+        [DataMember] public int TargetTicks { get; set; }           // profit-target offset from fill (ticks)
+        [DataMember] public int StopTicks { get; set; }             // protective-stop offset from fill (ticks)
+        [DataMember] public int EntryTimeoutSeconds { get; set; }   // cancel an unfilled limit entry after this (0 = no timeout)
+        [DataMember] public DateTime ClientUtcTime { get; set; }
+    }
+
     [DataContract]
     public class OrderAck
     {

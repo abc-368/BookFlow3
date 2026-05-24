@@ -173,11 +173,30 @@
                         <TextBlock Style="{StaticResource Hint}"
                                    Text="Volume thresholds scale with contract size — tune per instrument (ES carries far more size than a thin future). Changes apply live."/>
 
-                        <CheckBox Content="Enable order-flow signals" Margin="0,4,0,4"
+                        <CheckBox Content="Enable order-flow signals" Margin="0,4,0,2"
                                   IsChecked="{Binding Settings.EnableMicrostructureSignals}"/>
+                        <CheckBox Content="Auto-hide types whose reliability stays red" Margin="0,2,0,2"
+                                  IsChecked="{Binding Settings.AutoHideUnreliableSignals}"/>
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="Auto-hide mutes a type with a consistently red hit-rate (enough resolved samples) even if its 'Show in feed' box below is checked. Detection and scoring keep running either way."/>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Reliability scoring (definition of &quot;success&quot;)"/>
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="A signal is scored a WIN if price reaches +Target ticks before -Stop ticks (asymmetric allowed, e.g. 6 / 10). Set these to match the move you actually trade so the meter's hit-rate is meaningful. Costs/P&amp;L are tracked by NT8, not here."/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Success target (ticks)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.PredictionTargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Success stop (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.PredictionStopTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Min resolved samples (before scoring)"/>
+                            <TextBox   Grid.Row="2" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.ReliabilityMinSamples, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
 
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Spoofing / layering"/>
                         <TextBlock Style="{StaticResource Hint}" Text="Large add+cancel churn with almost nothing traded."/>
+                        <CheckBox Content="Show in feed" Margin="0,2,0,2" IsChecked="{Binding Settings.ShowSpoofingSignals}"/>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -189,6 +208,7 @@
 
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Iceberg / absorption"/>
                         <TextBlock Style="{StaticResource Hint}" Text="More traded through a level than its displayed size dropped (hidden replenishment)."/>
+                        <CheckBox Content="Show in feed" Margin="0,2,0,2" IsChecked="{Binding Settings.ShowIcebergSignals}"/>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Min hidden refill (contracts)"/>
@@ -197,6 +217,7 @@
 
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Liquidity withdrawal"/>
                         <TextBlock Style="{StaticResource Hint}" Text="One-sided resting size pulled (not traded) near the touch."/>
+                        <CheckBox Content="Show in feed" Margin="0,2,0,2" IsChecked="{Binding Settings.ShowWithdrawalSignals}"/>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -208,6 +229,7 @@
 
                         <TextBlock Style="{StaticResource SectionHeader}" Text="Aggression imbalance"/>
                         <TextBlock Style="{StaticResource Hint}" Text="Aggressive buys lifting asks vs sells hitting bids."/>
+                        <CheckBox Content="Show in feed" Margin="0,2,0,2" IsChecked="{Binding Settings.ShowAggressionSignals}"/>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -215,6 +237,117 @@
                             <TextBox   Grid.Row="0" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.AggressionMinVolume, UpdateSourceTrigger=PropertyChanged}"/>
                             <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Min imbalance (0–1)"/>
                             <TextBox   Grid.Row="1" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.AggressionMinImbalance, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Order-flow imbalance (OFI)"/>
+                        <TextBlock Style="{StaticResource Hint}" Text="Net signed queue pressure near the touch (Cont–Kukanov–Stoikov). The best-evidenced short-horizon predictor; watch its meter before trusting it."/>
+                        <CheckBox Content="Show in feed" Margin="0,2,0,2" IsChecked="{Binding Settings.ShowOfiSignals}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Min |OFI| (contracts)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.OfiMinImbalance, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Vicinity radius (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.OfiRadiusTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Book imbalance (touch)"/>
+                        <TextBlock Style="{StaticResource Hint}" Text="Resting bid vs ask size at the touch: (Qbid − Qask)/(Qbid + Qask). A one-tick-ahead skew."/>
+                        <CheckBox Content="Show in feed" Margin="0,2,0,2" IsChecked="{Binding Settings.ShowBookImbalanceSignals}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Min ratio (0–1)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.BookImbalanceMinRatio, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Min total size (contracts)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.BookImbalanceMinSize, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Auto-Trade">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16,10">
+                        <TextBlock Style="{StaticResource SectionHeader}" Margin="0,0,0,2" Text="Automatic trading on reliable signals (this instrument)"/>
+                        <TextBlock Style="{StaticResource Hint}" Foreground="#FFFF8A80"
+                                   Text="Places REAL orders automatically when an enabled type fires a green signal. Off by default. Validate on a Sim101 account first. One auto-position per instrument at a time; the host attaches an OCO target+stop on fill."/>
+
+                        <CheckBox Content="AUTO-TRADE ARMED (master switch / kill switch)" Margin="0,6,0,4" FontWeight="Bold"
+                                  IsChecked="{Binding Settings.AutoTradeArmed}"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="&quot;Green&quot; threshold (% hit-rate)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.ReliabilityGreenPercent, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Limit-entry timeout (seconds)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.AutoTradeEntryTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Max flow toxicity (0–1; 1 = off)"/>
+                            <TextBox   Grid.Row="2" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,4" Text="{Binding Settings.AutoTradeMaxToxicity, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource Hint}" Text="Toxicity = one-sidedness of recent aggressive flow. Below 1, auto-entry stands aside when flow is that toxic (informed/one-sided = poor fills)."/>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Spoofing"/>
+                        <CheckBox Content="Auto-trade this type" Margin="0,2" IsChecked="{Binding Settings.SpoofingAutoTrade.Enabled}"/>
+                        <CheckBox Content="Market order (else limit at signal price + offset)" Margin="0,2" IsChecked="{Binding Settings.SpoofingAutoTrade.UseMarketOrder}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="70"/><ColumnDefinition Width="110"/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Entry offset (ticks)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Margin="0,4" Text="{Binding Settings.SpoofingAutoTrade.OffsetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Size (contracts)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="3" Margin="0,4" Text="{Binding Settings.SpoofingAutoTrade.Size, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Target (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding Settings.SpoofingAutoTrade.TargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Stop (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="3" Margin="0,4" Text="{Binding Settings.SpoofingAutoTrade.StopTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Iceberg"/>
+                        <CheckBox Content="Auto-trade this type" Margin="0,2" IsChecked="{Binding Settings.IcebergAutoTrade.Enabled}"/>
+                        <CheckBox Content="Market order (else limit at signal price + offset)" Margin="0,2" IsChecked="{Binding Settings.IcebergAutoTrade.UseMarketOrder}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="70"/><ColumnDefinition Width="110"/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Entry offset (ticks)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Margin="0,4" Text="{Binding Settings.IcebergAutoTrade.OffsetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Size (contracts)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="3" Margin="0,4" Text="{Binding Settings.IcebergAutoTrade.Size, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Target (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding Settings.IcebergAutoTrade.TargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Stop (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="3" Margin="0,4" Text="{Binding Settings.IcebergAutoTrade.StopTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Liquidity withdrawal"/>
+                        <CheckBox Content="Auto-trade this type" Margin="0,2" IsChecked="{Binding Settings.WithdrawalAutoTrade.Enabled}"/>
+                        <CheckBox Content="Market order (else limit at signal price + offset)" Margin="0,2" IsChecked="{Binding Settings.WithdrawalAutoTrade.UseMarketOrder}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="70"/><ColumnDefinition Width="110"/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Entry offset (ticks)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Margin="0,4" Text="{Binding Settings.WithdrawalAutoTrade.OffsetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Size (contracts)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="3" Margin="0,4" Text="{Binding Settings.WithdrawalAutoTrade.Size, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Target (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding Settings.WithdrawalAutoTrade.TargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Stop (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="3" Margin="0,4" Text="{Binding Settings.WithdrawalAutoTrade.StopTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                        </Grid>
+
+                        <TextBlock Style="{StaticResource SectionHeader}" Text="Aggression imbalance"/>
+                        <TextBlock Style="{StaticResource Hint}" Text="No price level → always enters at market; offset is ignored."/>
+                        <CheckBox Content="Auto-trade this type" Margin="0,2" IsChecked="{Binding Settings.AggressionAutoTrade.Enabled}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="70"/><ColumnDefinition Width="110"/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Size (contracts)"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Margin="0,4" Text="{Binding Settings.AggressionAutoTrade.Size, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Target (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Margin="0,4" Text="{Binding Settings.AggressionAutoTrade.TargetTicks, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Stop (ticks)"/>
+                            <TextBox   Grid.Row="1" Grid.Column="3" Margin="0,4" Text="{Binding Settings.AggressionAutoTrade.StopTicks, UpdateSourceTrigger=PropertyChanged}"/>
                         </Grid>
                     </StackPanel>
                 </ScrollViewer>

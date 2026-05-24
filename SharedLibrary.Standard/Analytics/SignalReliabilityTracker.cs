@@ -8,8 +8,8 @@ namespace BookFlow.Shared.Analytics
     /// per-type hit-rate.
     ///
     /// A signal predicts a direction (its <see cref="MicrostructureBias"/>). When it fires we begin
-    /// watching price from its anchor: if price travels <see cref="EvalTicks"/> ticks in the
-    /// predicted direction before it travels the same distance against, that is a WIN; the opposite
+    /// watching price from its anchor: if price travels <see cref="TargetTicks"/> ticks in the
+    /// predicted direction before <see cref="StopTicks"/> ticks against, that is a WIN; the opposite
     /// is a LOSS (a triple-barrier / first-passage test). Resolved outcomes feed a running
     /// reliability that is used to stamp FUTURE signals — already-printed feed lines are never
     /// revised, so there is no look-ahead bias and the UI stays append-only.
@@ -24,14 +24,19 @@ namespace BookFlow.Shared.Analytics
         {
             public MicrostructureSignalType Type;
             public int Dir;            // +1 = up, -1 = down
-            public long TargetTicks;   // barrier in the predicted direction
-            public long StopTicks;     // barrier against
+            public long TargetLevel;   // price level (ticks) of the favorable barrier
+            public long StopLevel;     // price level (ticks) of the adverse barrier
         }
 
         private struct Stat { public int Wins; public int Total; }
 
-        /// <summary>Barrier distance, in ticks, from each signal's anchor price.</summary>
-        public int EvalTicks { get; set; } = 4;
+        /// <summary>
+        /// Defines "success": a win is price travelling <see cref="TargetTicks"/> ticks in the
+        /// predicted direction before <see cref="StopTicks"/> ticks against. Asymmetric is allowed
+        /// (e.g. target 6 / stop 10) so the meter can be tuned to match the bracket actually traded.
+        /// </summary>
+        public int TargetTicks { get; set; } = 4;
+        public int StopTicks { get; set; } = 4;
 
         /// <summary>Below this many resolved samples a type is "still learning" (bars gated to 0).</summary>
         public int MinSamples { get; set; } = 5;
@@ -53,13 +58,14 @@ namespace BookFlow.Shared.Analytics
         {
             int dir = bias == MicrostructureBias.Up ? 1 : bias == MicrostructureBias.Down ? -1 : 0;
             if (dir == 0) return;
-            int k = Math.Max(1, EvalTicks);
+            int tk = Math.Max(1, TargetTicks);
+            int sk = Math.Max(1, StopTicks);
             _pending.AddLast(new Pending
             {
                 Type = type,
                 Dir = dir,
-                TargetTicks = anchorTicks + dir * k,
-                StopTicks = anchorTicks - dir * k,
+                TargetLevel = anchorTicks + dir * tk,
+                StopLevel = anchorTicks - dir * sk,
             });
             while (_pending.Count > MaxPending) _pending.RemoveFirst(); // discard oldest unresolved
         }
@@ -76,8 +82,8 @@ namespace BookFlow.Shared.Analytics
             {
                 var next = node.Next;
                 var p = node.Value;
-                bool win = p.Dir > 0 ? midTicks >= p.TargetTicks : midTicks <= p.TargetTicks;
-                bool loss = p.Dir > 0 ? midTicks <= p.StopTicks : midTicks >= p.StopTicks;
+                bool win = p.Dir > 0 ? midTicks >= p.TargetLevel : midTicks <= p.TargetLevel;
+                bool loss = p.Dir > 0 ? midTicks <= p.StopLevel : midTicks >= p.StopLevel;
                 if (win || loss)
                 {
                     var s = _stats.TryGetValue(p.Type, out var cur) ? cur : new Stat();

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BookFlow.Shared.Analytics
 {
-    public enum MicrostructureSignalType : byte { Spoofing = 1, Iceberg = 2, LiquidityWithdrawal = 3, AggressionImbalance = 4 }
+    public enum MicrostructureSignalType : byte { Spoofing = 1, Iceberg = 2, LiquidityWithdrawal = 3, AggressionImbalance = 4, OrderFlowImbalance = 5, BookImbalance = 6 }
     public enum MicrostructureSide : byte { None = 0, Bid = 1, Ask = 2 }
 
     /// <summary>Predicted near-term price pressure implied by a signal.</summary>
@@ -56,6 +56,15 @@ namespace BookFlow.Shared.Analytics
         public long AggressionMinVolume { get; set; } = 30;
         public double AggressionMinImbalance { get; set; } = 0.6;
 
+        // Order-flow imbalance (Cont–Kukanov–Stoikov, generalized over a near-touch vicinity):
+        // net signed queue change over the interval. Positive => buy pressure (UP).
+        public long OfiMinImbalance { get; set; } = 150;
+        public int OfiRadiusTicks { get; set; } = 3;
+
+        // Book imbalance at the touch: (Qbid - Qask)/(Qbid + Qask), a one-tick-ahead skew.
+        public double BookImbalanceMinRatio { get; set; } = 0.6;
+        public long BookImbalanceMinSize { get; set; } = 50;
+
         public List<MicrostructureSignal> Detect(
             IReadOnlyList<L2AnalyticsSlot> prev,
             IReadOnlyList<L2AnalyticsSlot> curr,
@@ -78,9 +87,16 @@ namespace BookFlow.Shared.Analytics
 
             long withdrawBid = 0, withdrawAsk = 0;
             long aggrBuy = 0, aggrSell = 0;
+            // OFI accumulators (near-touch) and current touch queue sizes (book imbalance).
+            long ofiAddBid = 0, ofiCancBid = 0, ofiSellTrade = 0, ofiAddAsk = 0, ofiCancAsk = 0, ofiBuyTrade = 0;
+            long touchBidSize = 0, touchAskSize = 0;
 
             foreach (var c in curr)
             {
+                // Touch queue sizes are read from the current snapshot regardless of a prior baseline.
+                if (bestBid.HasValue && c.Price == bestBid.Value) touchBidSize = c.BidSize;
+                if (bestAsk.HasValue && c.Price == bestAsk.Value) touchAskSize = c.AskSize;
+
                 if (!prevByTicks.TryGetValue(c.PriceTicks, out var p))
                     continue; // slot is new/reset this interval — no comparable baseline
 
@@ -148,10 +164,59 @@ namespace BookFlow.Shared.Analytics
                         long cancelNotTraded = Math.Max(0, cancD - tradD);
                         if (isBidSide) withdrawBid += cancelNotTraded; else withdrawAsk += cancelNotTraded;
                     }
+
+                    // --- Order-flow imbalance components within a tighter near-touch radius ---
+                    if (distTicks <= OfiRadiusTicks)
+                    {
+                        if (isBidSide) { ofiAddBid += addedD; ofiCancBid += cancD; ofiSellTrade += bidTradD; }
+                        else { ofiAddAsk += addedD; ofiCancAsk += cancD; ofiBuyTrade += askTradD; }
+                    }
                 }
 
                 aggrBuy += askTradD;  // aggressive buys lift the ask
                 aggrSell += bidTradD; // aggressive sells hit the bid
+            }
+
+            // --- Order-flow imbalance ---
+            // Net signed queue pressure: bid adds + ask cancels + buys lifting asks are bullish;
+            // bid cancels + sells hitting bids + ask adds are bearish.
+            long ofi = (ofiAddBid - ofiCancBid - ofiSellTrade) - (ofiAddAsk - ofiCancAsk - ofiBuyTrade);
+            if (Math.Abs(ofi) >= OfiMinImbalance)
+            {
+                bool up = ofi > 0;
+                signals.Add(new MicrostructureSignal
+                {
+                    Type = MicrostructureSignalType.OrderFlowImbalance,
+                    Side = MicrostructureSide.None,
+                    Price = null,
+                    Score = Math.Abs(ofi),
+                    Bias = up ? MicrostructureBias.Up : MicrostructureBias.Down,
+                    Strong = Math.Abs(ofi) >= 2 * OfiMinImbalance,
+                    TimestampTicks = nowTicks,
+                    Label = $"OFI {(up ? "+" : "")}{ofi} ({(up ? "buy" : "sell")} pressure)",
+                });
+            }
+
+            // --- Book imbalance at the touch ---
+            long bookTotal = touchBidSize + touchAskSize;
+            if (bookTotal >= BookImbalanceMinSize)
+            {
+                double imb = (double)(touchBidSize - touchAskSize) / bookTotal;
+                if (Math.Abs(imb) >= BookImbalanceMinRatio)
+                {
+                    bool up = imb > 0;
+                    signals.Add(new MicrostructureSignal
+                    {
+                        Type = MicrostructureSignalType.BookImbalance,
+                        Side = up ? MicrostructureSide.Bid : MicrostructureSide.Ask,
+                        Price = null,
+                        Score = Math.Abs(imb),
+                        Bias = up ? MicrostructureBias.Up : MicrostructureBias.Down,
+                        Strong = Math.Abs(imb) >= 0.8,
+                        TimestampTicks = nowTicks,
+                        Label = $"Book imbalance {imb:+0.00;-0.00} ({(up ? "bid" : "ask")} heavy)",
+                    });
+                }
             }
 
             // Pulling bids removes support (DOWN); pulling asks removes resistance (UP).

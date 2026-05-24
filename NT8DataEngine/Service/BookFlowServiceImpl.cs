@@ -24,6 +24,7 @@ namespace BookFlow.NT8DataEngine.Service
         private readonly CallbackRegistry _callbacks;
         private readonly Func<PortfolioSnapshot> _portfolioProvider;
         private readonly Func<OrderRequest, OrderAck> _submitOrderHandler;
+        private readonly Func<BracketOrderRequest, OrderAck> _submitBracketHandler;
         private readonly Func<string, OperationResult> _cancelAllHandler;
         private readonly Func<string, string, double, OperationResult> _cancelAtPriceHandler;
         private readonly Func<string, string, OperationResult> _flattenHandler;
@@ -39,6 +40,7 @@ namespace BookFlow.NT8DataEngine.Service
             CallbackRegistry callbacks,
             Func<PortfolioSnapshot> portfolioProvider,
             Func<OrderRequest, OrderAck> submitOrderHandler,
+            Func<BracketOrderRequest, OrderAck> submitBracketHandler,
             Func<string, OperationResult> cancelAllHandler,
             Func<string, string, double, OperationResult> cancelAtPriceHandler,
             Func<string, string, OperationResult> flattenHandler,
@@ -50,6 +52,7 @@ namespace BookFlow.NT8DataEngine.Service
             _callbacks = callbacks ?? throw new ArgumentNullException(nameof(callbacks));
             _portfolioProvider = portfolioProvider ?? throw new ArgumentNullException(nameof(portfolioProvider));
             _submitOrderHandler = submitOrderHandler ?? throw new ArgumentNullException(nameof(submitOrderHandler));
+            _submitBracketHandler = submitBracketHandler ?? throw new ArgumentNullException(nameof(submitBracketHandler));
             _cancelAllHandler = cancelAllHandler ?? throw new ArgumentNullException(nameof(cancelAllHandler));
             _cancelAtPriceHandler = cancelAtPriceHandler ?? throw new ArgumentNullException(nameof(cancelAtPriceHandler));
             _flattenHandler = flattenHandler ?? throw new ArgumentNullException(nameof(flattenHandler));
@@ -80,6 +83,8 @@ namespace BookFlow.NT8DataEngine.Service
         public PortfolioSnapshot RequestPortfolioState() => _portfolioProvider();
 
         public OrderAck SubmitOrder(OrderRequest request) => _submitOrderHandler(request);
+
+        public OrderAck SubmitBracketOrder(BracketOrderRequest request) => _submitBracketHandler(request);
 
         public OperationResult CancelAllOrders(string accountName) => _cancelAllHandler(accountName);
 

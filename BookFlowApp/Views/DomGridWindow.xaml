@@ -136,9 +136,36 @@
 
         <converters:ColumnWidthConverter x:Key="ColumnWidthConverter"/>
         <converters:HexToBrushConverter x:Key="HexToBrushConverter"/>
+
+        <!-- Auto-trade ARM toggle: red-tinted when idle, solid red when armed (danger/kill switch). -->
+        <Style x:Key="ArmToggleButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="B" Background="#33F44336" BorderBrush="#FFF44336" BorderThickness="1" CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="#FFF44336"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="BorderBrush" Value="#FFFF8A80"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/> <!-- DOM (toolbar/header/ladder/status) -->
+            <ColumnDefinition Width="Auto"/> <!-- Order-flow signals rail (full window height) -->
+        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -187,6 +214,15 @@
                  <ToggleButton x:Name="SignalsButton" Width="28" Height="22" Margin="1,5"
                                Style="{StaticResource SettingsToggleButtonStyle}">
                      <TextBlock Text="&#931;" Foreground="White" FontSize="12" FontWeight="Bold"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                 </ToggleButton>
+
+                 <!-- Auto-trade arm / kill switch (configure per type in Settings → Auto-Trade) -->
+                 <ToggleButton x:Name="ArmButton" Width="42" Height="22" Margin="8,5,1,5"
+                               Style="{StaticResource ArmToggleButtonStyle}"
+                               IsChecked="{Binding Settings.AutoTradeArmed}"
+                               ToolTip="Arm automatic trading on green signals (configure in Settings → Auto-Trade)">
+                     <TextBlock Text="ARM" Foreground="White" FontSize="10" FontWeight="Bold"
                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
                  </ToggleButton>
                 </StackPanel>
@@ -270,14 +306,8 @@
             </Grid>
         </Border>
         
-        <!-- DOM Grid + adjacent persistent signals panel -->
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-        <Border Grid.Column="0" Background="#FF1A252F" BorderBrush="#FF4A90E2"
+        <!-- DOM Grid (left column) -->
+        <Border Grid.Row="2" Grid.Column="0" Background="#FF1A252F" BorderBrush="#FF4A90E2"
                 BorderThickness="1" Margin="0" VerticalAlignment="Stretch">
             <Grid>
                 <Grid.RowDefinitions>
@@ -761,47 +791,67 @@
             </Grid>
         </Border>
 
-        <!-- Persistent order-flow signals panel, docked beside the ladder (toggled by the Sigma button) -->
-        <Border Grid.Column="1" x:Name="SignalsPanel" Width="320" Margin="2,0,0,0"
+        <!-- Order-flow signals: full-height right rail spanning the whole window (toggled by the Sigma button) -->
+        <Border Grid.Row="0" Grid.RowSpan="4" Grid.Column="1" x:Name="SignalsPanel" Width="320" Margin="2,0,0,0"
                 VerticalAlignment="Stretch"
                 Background="#FF1E2A3A" BorderBrush="#FF4A90E2" BorderThickness="1"
                 Visibility="{Binding IsChecked, ElementName=SignalsButton, Converter={StaticResource BooleanToVisibilityConverter}}">
             <DockPanel Margin="6">
                 <TextBlock DockPanel.Dock="Top" Text="Order-Flow Signals" Foreground="White" FontWeight="Bold" FontSize="11" Margin="2,0,0,4"/>
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding RecentSignals}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,1">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="52"/>
-                                        <ColumnDefinition Width="14"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding TimeText}" Foreground="#FF95A5A6" FontSize="9" VerticalAlignment="Center"/>
-                                    <!-- Predicted-direction arrow; bold when the signal is strong. -->
-                                    <TextBlock Grid.Column="1" Text="{Binding DirectionArrow}" FontSize="11" VerticalAlignment="Center"
-                                               Foreground="{Binding ArrowColorHex, Converter={StaticResource HexToBrushConverter}}"
-                                               FontWeight="{Binding IsStrong, Converter={StaticResource BooleanToFontWeightConverter}}"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding Label}" FontSize="9" VerticalAlignment="Center" Margin="3,0,0,0"
-                                               Foreground="{Binding ColorHex, Converter={StaticResource HexToBrushConverter}}"
-                                               FontWeight="{Binding IsStrong, Converter={StaticResource BooleanToFontWeightConverter}}"/>
-                                    <!-- Prediction-power meter (type hit-rate known at print time); tooltip has the rate + sample count. -->
-                                    <TextBlock Grid.Column="3" Text="{Binding StrengthMeter}" FontFamily="Consolas" FontSize="9"
-                                               VerticalAlignment="Center" Margin="6,0,2,0" ToolTip="{Binding StrengthTooltip}"
-                                               Foreground="{Binding StrengthColorHex, Converter={StaticResource HexToBrushConverter}}"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <!-- ListBox supplies a virtualizing scroll viewer: only on-screen rows are realized,
+                     so the feed scrolls (bounded by MaxFeed) at O(visible) render cost regardless of cap. -->
+                <ListBox ItemsSource="{Binding RecentSignals}"
+                         Background="Transparent" BorderThickness="0" Padding="0"
+                         HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         VirtualizingStackPanel.IsVirtualizing="True"
+                         VirtualizingStackPanel.VirtualizationMode="Recycling">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Focusable" Value="False"/>
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="0"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <ContentPresenter/>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="52"/>
+                                    <ColumnDefinition Width="14"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding TimeText}" Foreground="#FF95A5A6" FontSize="9" VerticalAlignment="Center"/>
+                                <!-- Predicted-direction arrow; bold when the signal is strong. -->
+                                <TextBlock Grid.Column="1" Text="{Binding DirectionArrow}" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{Binding ArrowColorHex, Converter={StaticResource HexToBrushConverter}}"
+                                           FontWeight="{Binding IsStrong, Converter={StaticResource BooleanToFontWeightConverter}}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Label}" FontSize="9" VerticalAlignment="Center" Margin="3,0,0,0"
+                                           Foreground="{Binding ColorHex, Converter={StaticResource HexToBrushConverter}}"
+                                           FontWeight="{Binding IsStrong, Converter={StaticResource BooleanToFontWeightConverter}}"/>
+                                <!-- Prediction-power meter (type hit-rate known at print time); tooltip has the rate + sample count. -->
+                                <TextBlock Grid.Column="3" Text="{Binding StrengthMeter}" FontFamily="Consolas" FontSize="9"
+                                           VerticalAlignment="Center" Margin="6,0,2,0" ToolTip="{Binding StrengthTooltip}"
+                                           Foreground="{Binding StrengthColorHex, Converter={StaticResource HexToBrushConverter}}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </DockPanel>
         </Border>
-        </Grid>
 
         <!-- Status Bar -->
-        <Border Grid.Row="3" Background="#FF1E2A3A" BorderBrush="#FF4A90E2" 
+        <Border Grid.Row="3" Grid.Column="0" Background="#FF1E2A3A" BorderBrush="#FF4A90E2"
                 BorderThickness="0,1,0,0" Height="30" Padding="10,5">
             <Grid>
                 <Grid.ColumnDefinitions>

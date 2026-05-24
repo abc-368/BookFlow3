@@ -58,6 +58,12 @@ namespace BookFlow.App.Interfaces
         Task<OrderStatusMessage> SubmitOrderAsync(string instrumentName, OrderCommand orderCommand);
 
         /// <summary>
+        /// Submits a bracketed entry. The NT8 host attaches an OCO target+stop pair when the
+        /// entry fills (server-side). Returns the entry's broker ack.
+        /// </summary>
+        Task<OrderAck> SubmitBracketOrderAsync(BracketOrderRequest request);
+
+        /// <summary>
         /// Requests current portfolio state from the data source.
         /// </summary>
         /// <returns>Current portfolio state including positions and orders.</returns>

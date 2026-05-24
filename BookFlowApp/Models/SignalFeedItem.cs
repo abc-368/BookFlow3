@@ -19,6 +19,8 @@ namespace BookFlow.App.Models
         public double ReliabilityRatio { get; init; }
         public int ReliabilitySamples { get; init; }
         public bool ReliabilityLearning { get; init; }
+        // The "green" hit-rate (0..1), from settings, so the meter and the auto-trade gate agree.
+        public double GreenThreshold { get; init; } = 0.60;
 
         public string TimeText => Time.ToString("HH:mm:ss");
 
@@ -39,9 +41,9 @@ namespace BookFlow.App.Models
             get
             {
                 if (Bias == MicrostructureBias.Neutral || ReliabilityLearning) return "#FF607D8B"; // gray
-                if (ReliabilityRatio < 0.45) return "#FFEF5350";  // red
-                if (ReliabilityRatio < 0.60) return "#FFFFA726";  // amber
-                return "#FF66BB6A";                                // green
+                if (ReliabilityRatio < 0.45) return "#FFEF5350";          // red
+                if (ReliabilityRatio < GreenThreshold) return "#FFFFA726"; // amber
+                return "#FF66BB6A";                                        // green
             }
         }
 
@@ -74,6 +76,9 @@ namespace BookFlow.App.Models
             MicrostructureSignalType.LiquidityWithdrawal => "#FFEF5350", // red
             MicrostructureSignalType.AggressionImbalance =>
                 Side == MicrostructureSide.Ask ? "#FF66BB6A" : "#FFEF5350", // buy=green / sell=red
+            MicrostructureSignalType.OrderFlowImbalance =>
+                Bias == MicrostructureBias.Up ? "#FF66BB6A" : "#FFEF5350",   // up=green / down=red
+            MicrostructureSignalType.BookImbalance => "#FFAB47BC",            // purple
             _ => "#FFB0BEC5",
         };
     }

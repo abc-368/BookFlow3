@@ -8,6 +8,7 @@ using System.Windows.Input;
 using BookFlow.Shared.Contracts;
 using BookFlow.Shared.Analytics;
 using BookFlow.App.Interfaces;
+using BookFlow.App.Engine;
 using BookFlow.App.Models;
 using System.Linq;
 using System.Collections.Generic;
@@ -31,8 +32,11 @@ namespace BookFlow.App.ViewModels
 
         // Microstructure signal feed + transient ladder glyphs.
         private readonly List<DomRowData> _activeSignalRows = new();
+        private readonly SignalAutoTrader? _autoTrader;
         private static readonly long SignalDwellTicks = TimeSpan.FromSeconds(2).Ticks;
-        private const int MaxFeed = 60;
+        // Bounded history so a long session can't grow the feed unbounded. The panel virtualizes,
+        // so only on-screen rows are realized regardless of this cap; scrolling reveals the rest.
+        private const int MaxFeed = 200;
         public ObservableCollection<SignalFeedItem> RecentSignals { get; } = new();
         
         // Logging integration - simple on/off
@@ -102,6 +106,16 @@ namespace BookFlow.App.ViewModels
             }
 
             DomRows = new RangeObservableCollection<DomRowData>();
+
+            // Auto-trader: reacts to green signals when armed, fires bracket entries via the engine.
+            _autoTrader = new SignalAutoTrader(
+                _domEngine.Settings,
+                _domEngine.TickSize,
+                (isBuy, isLimit, price, qty, tgt, stop, timeout) =>
+                    _domEngine.SubmitBracketOrderAsync(isBuy, isLimit, price, qty, tgt, stop, timeout),
+                () => _domEngine.FlowToxicity,
+                msg => System.Diagnostics.Debug.WriteLine("[AutoTrade] " + msg));
+            _autoTrader.OnPositionChanged(Position); // sync initial state
 
             // Subscribe to engine updates (store the handle so Dispose can release it)
             _ladderSubscription = _domEngine.LadderUpdates.Subscribe(OnLadderUpdate);
@@ -258,6 +272,7 @@ namespace BookFlow.App.ViewModels
                     _position = value;
                     OnPropertyChanged();
                     UpdatePositionText();
+                    _autoTrader?.OnPositionChanged(value); // drive the one-position-per-instrument guard
                 }
             }
         }
@@ -445,10 +460,36 @@ namespace BookFlow.App.ViewModels
             }
         }
 
+        // Whether a detected signal should be rendered, per the user's feed-visibility settings.
+        // Detection and reliability scoring always run; this only gates display, so muted types keep
+        // accurate meters and re-enabling shows them immediately.
+        private bool ShouldPrintSignal(MicrostructureSignal sig)
+        {
+            var s = Settings;
+            bool typeShown = sig.Type switch
+            {
+                MicrostructureSignalType.Spoofing => s.ShowSpoofingSignals,
+                MicrostructureSignalType.Iceberg => s.ShowIcebergSignals,
+                MicrostructureSignalType.LiquidityWithdrawal => s.ShowWithdrawalSignals,
+                MicrostructureSignalType.AggressionImbalance => s.ShowAggressionSignals,
+                MicrostructureSignalType.OrderFlowImbalance => s.ShowOfiSignals,
+                MicrostructureSignalType.BookImbalance => s.ShowBookImbalanceSignals,
+                _ => true,
+            };
+            if (!typeShown) return false;
+            // Auto-hide overrides an enabled toggle while the type's hit-rate is in the meter's red
+            // band (<45%) and has enough resolved samples to be meaningful.
+            if (s.AutoHideUnreliableSignals && !sig.ReliabilityLearning && sig.ReliabilityRatio < 0.45)
+                return false;
+            return true;
+        }
+
         // A detected order-flow signal. Adds to the feed and (for level-anchored spoof/iceberg)
         // sets a transient glyph on the matching ladder row.
         private void OnSignal(MicrostructureSignal sig)
         {
+            _autoTrader?.OnSignal(sig); // auto-trade gating is independent of feed visibility
+            if (!ShouldPrintSignal(sig)) return; // detection/scoring still ran; we just don't render it
             App.Current?.Dispatcher?.BeginInvoke(() =>
             {
                 RecentSignals.Insert(0, new SignalFeedItem
@@ -464,6 +505,7 @@ namespace BookFlow.App.ViewModels
                     ReliabilityRatio = sig.ReliabilityRatio,
                     ReliabilitySamples = sig.ReliabilitySamples,
                     ReliabilityLearning = sig.ReliabilityLearning,
+                    GreenThreshold = Settings.ReliabilityGreenPercent / 100.0,
                 });
                 while (RecentSignals.Count > MaxFeed) RecentSignals.RemoveAt(RecentSignals.Count - 1);
 

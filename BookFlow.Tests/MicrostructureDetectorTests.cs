@@ -115,5 +115,43 @@ namespace BookFlow.Tests
             var s = Run(prev, curr);
             Assert.Empty(s);
         }
+
+        [Fact]
+        public void Ofi_BidAddsAndAskCancels_FlagsBuyPressure()
+        {
+            // Near touch: +300 bid added, 200 ask canceled => strongly positive OFI => UP.
+            var prev = new[]
+            {
+                Slot(100.00m, bidSize: 100, askSize: 0, added: 0, canceled: 0, traded: 0, 0, 0),
+                Slot(100.25m, bidSize: 0, askSize: 100, added: 0, canceled: 0, traded: 0, 0, 0),
+            };
+            var curr = new[]
+            {
+                Slot(100.00m, bidSize: 400, askSize: 0, added: 300, canceled: 0, traded: 0, 0, 0),
+                Slot(100.25m, bidSize: 0, askSize: 0, added: 0, canceled: 200, traded: 0, 0, 0),
+            };
+            var det = new MicrostructureDetector();
+            var s = det.Detect(prev, curr, BestBid, BestAsk, Tick, 0);
+            Assert.Contains(s, x => x.Type == MicrostructureSignalType.OrderFlowImbalance && x.Bias == MicrostructureBias.Up);
+        }
+
+        [Fact]
+        public void BookImbalance_BidHeavyTouch_FlagsUp()
+        {
+            // Resting touch sizes: 150 bid vs 30 ask => ratio 0.67 => UP. No deltas, so OFI/others quiet.
+            var prev = new[]
+            {
+                Slot(100.00m, bidSize: 150, askSize: 0, added: 0, canceled: 0, traded: 0, 0, 0),
+                Slot(100.25m, bidSize: 0, askSize: 30, added: 0, canceled: 0, traded: 0, 0, 0),
+            };
+            var curr = new[]
+            {
+                Slot(100.00m, bidSize: 150, askSize: 0, added: 0, canceled: 0, traded: 0, 0, 0),
+                Slot(100.25m, bidSize: 0, askSize: 30, added: 0, canceled: 0, traded: 0, 0, 0),
+            };
+            var det = new MicrostructureDetector();
+            var s = det.Detect(prev, curr, BestBid, BestAsk, Tick, 0);
+            Assert.Contains(s, x => x.Type == MicrostructureSignalType.BookImbalance && x.Bias == MicrostructureBias.Up);
+        }
     }
 }

@@ -23,6 +23,22 @@ namespace NinjaTrader.NinjaScript.AddOns
         private readonly Dictionary<string, Order> _clientOrderMap = new Dictionary<string, Order>();
         private readonly object _orderLock = new object();
 
+        // Entry orders awaiting their fill so we can attach an OCO target+stop pair. Keyed by
+        // the entry's NT OrderId.
+        private readonly Dictionary<string, PendingBracket> _pendingBrackets = new Dictionary<string, PendingBracket>();
+
+        private sealed class PendingBracket
+        {
+            public string ClientOrderId;
+            public Order Entry;
+            public int Quantity;
+            public int TargetTicks;
+            public int StopTicks;
+            public double TickSize;
+            public DateTime EntryDeadlineUtc; // default => no timeout (market entries)
+            public bool Placed;
+        }
+
         private readonly Dictionary<string, byte> _instrumentToTickerId = new Dictionary<string, byte>();
         private readonly Dictionary<byte, string> _tickerIdToInfo = new Dictionary<byte, string>();
         private int _nextTickerIdInt = 1; // widened to int to detect byte overflow before assignment
@@ -167,7 +183,7 @@ namespace NinjaTrader.NinjaScript.AddOns
             try { _shutdownCts?.Dispose(); } catch { }
 
             // 5. Clear maps so a subsequent re-init (NT8 recompile + reload) starts clean.
-            lock (_orderLock) { _clientOrderMap.Clear(); _ntOrderIdToClientId.Clear(); }
+            lock (_orderLock) { _clientOrderMap.Clear(); _ntOrderIdToClientId.Clear(); _pendingBrackets.Clear(); }
             lock (_accountLock) { _lastAccountBroadcastUtc.Clear(); }
             lock (_tickerLock)
             {
@@ -303,6 +319,8 @@ namespace NinjaTrader.NinjaScript.AddOns
             {
                 if (e.Order == null || e.Order.Instrument == null) return;
                 PublishOrderUpdate(e.Order);
+                if (e.Order.OrderState == OrderState.Filled)
+                    TryPlaceBrackets(e.Order); // no-op unless this is a tracked bracket entry
             }
             catch (Exception ex) { LogMsg(string.Format("ERROR: OnOrderUpdate failed: {0}", ex.Message)); }
         }
@@ -411,6 +429,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                     LogMsg,
                     BuildPortfolioSnapshot,
                     WcfSubmitOrder,
+                    WcfSubmitBracketOrder,
                     WcfCancelAllOrders,
                     WcfCancelAtPrice,
                     WcfFlattenPosition,
@@ -661,6 +680,148 @@ namespace NinjaTrader.NinjaScript.AddOns
             return ack;
         }
 
+        private OrderAck WcfSubmitBracketOrder(BracketOrderRequest request)
+        {
+            var ack = new OrderAck { ClientOrderId = request?.ClientOrderId, ServerUtcTime = DateTime.UtcNow };
+            try
+            {
+                if (request == null) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = "Null request"; return ack; }
+                if (request.Quantity <= 0) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = "Quantity must be > 0"; return ack; }
+                if (request.TargetTicks <= 0 || request.StopTicks <= 0) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = "Target/Stop ticks must be > 0"; return ack; }
+
+                var account = ResolveAccount(request.AccountName, out var accErr);
+                if (account == null) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = accErr; return ack; }
+
+                var instrument = Instrument.GetInstrument(request.InstrumentName);
+                if (instrument == null) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = "Instrument not found: " + request.InstrumentName; return ack; }
+
+                var orderAction = request.Side == BookFlowSide.Buy ? OrderAction.Buy : OrderAction.Sell;
+
+                // Automated entry; the OCO brackets are placed on fill in TryPlaceBrackets.
+                Order entry = request.EntryIsLimit
+                    ? account.CreateOrder(instrument, orderAction, OrderType.Limit, OrderEntry.Automated, TimeInForce.Day, request.Quantity, request.EntryLimitPrice, 0, string.Empty, "BookFlow-Entry", DateTime.MinValue, null)
+                    : account.CreateOrder(instrument, orderAction, OrderType.Market, OrderEntry.Automated, TimeInForce.Day, request.Quantity, 0, 0, string.Empty, "BookFlow-Entry", DateTime.MinValue, null);
+
+                if (entry == null) { ack.Status = BookFlowOrderStatus.Rejected; ack.Message = "Failed to create entry order"; return ack; }
+
+                var pb = new PendingBracket
+                {
+                    ClientOrderId = request.ClientOrderId,
+                    Entry = entry,
+                    Quantity = request.Quantity,
+                    TargetTicks = request.TargetTicks,
+                    StopTicks = request.StopTicks,
+                    TickSize = instrument.MasterInstrument.TickSize,
+                    EntryDeadlineUtc = (request.EntryIsLimit && request.EntryTimeoutSeconds > 0)
+                        ? DateTime.UtcNow.AddSeconds(request.EntryTimeoutSeconds)
+                        : default(DateTime),
+                };
+
+                lock (_orderLock)
+                {
+                    _clientOrderMap[request.ClientOrderId ?? entry.OrderId] = entry;
+                    if (!string.IsNullOrEmpty(entry.OrderId) && !string.IsNullOrEmpty(request.ClientOrderId))
+                        _ntOrderIdToClientId[entry.OrderId] = request.ClientOrderId;
+                    if (!string.IsNullOrEmpty(entry.OrderId))
+                        _pendingBrackets[entry.OrderId] = pb;
+                }
+                account.Submit(new[] { entry });
+
+                ack.NtOrderId = entry.OrderId;
+                ack.Status = BookFlowOrderStatus.Submitted;
+                ack.Message = string.Format("Bracket entry submitted to {0} (TP {1}t / SL {2}t)", account.Name, request.TargetTicks, request.StopTicks);
+            }
+            catch (Exception ex)
+            {
+                ack.Status = BookFlowOrderStatus.Rejected;
+                ack.Message = ex.Message;
+            }
+            return ack;
+        }
+
+        // On entry fill, place a profit-target limit + protective stop as a server-side OCO pair
+        // (same oco tag => NT8/broker cancels the survivor when one fills). Priced off the average
+        // fill, sized to the filled quantity. Idempotent per entry.
+        private void TryPlaceBrackets(Order entry)
+        {
+            PendingBracket pb;
+            lock (_orderLock)
+            {
+                if (entry.OrderId == null || !_pendingBrackets.TryGetValue(entry.OrderId, out pb)) return;
+                if (pb.Placed) return;
+                pb.Placed = true;
+                _pendingBrackets.Remove(entry.OrderId);
+            }
+            try
+            {
+                var account = entry.Account;
+                var instrument = entry.Instrument;
+                if (account == null || instrument == null) return;
+
+                double fill = entry.AverageFillPrice;
+                int qty = entry.Filled > 0 ? entry.Filled : pb.Quantity;
+                double tick = pb.TickSize > 0 ? pb.TickSize : instrument.MasterInstrument.TickSize;
+
+                bool entryWasBuy = entry.OrderAction == OrderAction.Buy || entry.OrderAction == OrderAction.BuyToCover;
+                var exitAction = entryWasBuy ? OrderAction.Sell : OrderAction.Buy;
+
+                double targetPrice = entryWasBuy
+                    ? RoundToTick(fill + pb.TargetTicks * tick, tick)
+                    : RoundToTick(fill - pb.TargetTicks * tick, tick);
+                double stopPrice = entryWasBuy
+                    ? RoundToTick(fill - pb.StopTicks * tick, tick)
+                    : RoundToTick(fill + pb.StopTicks * tick, tick);
+
+                string oco = "BFOCO-" + (pb.ClientOrderId ?? entry.OrderId);
+                var target = account.CreateOrder(instrument, exitAction, OrderType.Limit, OrderEntry.Automated, TimeInForce.Day, qty, targetPrice, 0, oco, "BookFlow-TP", DateTime.MinValue, null);
+                var stop = account.CreateOrder(instrument, exitAction, OrderType.StopMarket, OrderEntry.Automated, TimeInForce.Day, qty, 0, stopPrice, oco, "BookFlow-SL", DateTime.MinValue, null);
+                if (target == null || stop == null) { LogMsg("Bracket creation failed for entry " + entry.OrderId); return; }
+
+                lock (_orderLock)
+                {
+                    if (!string.IsNullOrEmpty(pb.ClientOrderId))
+                    {
+                        if (!string.IsNullOrEmpty(target.OrderId)) _ntOrderIdToClientId[target.OrderId] = pb.ClientOrderId + "-TP";
+                        if (!string.IsNullOrEmpty(stop.OrderId)) _ntOrderIdToClientId[stop.OrderId] = pb.ClientOrderId + "-SL";
+                    }
+                }
+                account.Submit(new[] { target, stop });
+                LogMsg(string.Format("Bracket placed (entry {0}): {1} {2} @ TP {3} / SL {4} (OCO {5})", entry.OrderId, exitAction, qty, targetPrice, stopPrice, oco));
+            }
+            catch (Exception ex) { LogMsg("Bracket placement error: " + ex.Message); }
+        }
+
+        private static double RoundToTick(double price, double tick)
+            => tick > 0 ? Math.Round(price / tick, MidpointRounding.AwayFromZero) * tick : price;
+
+        // Cancel bracket entries (limit) that haven't filled by their deadline so a stale entry
+        // can't fill long after the signal is irrelevant. Called from the 1 s heartbeat.
+        private void ExpireStaleBracketEntries()
+        {
+            List<PendingBracket> expired = null;
+            var now = DateTime.UtcNow;
+            lock (_orderLock)
+            {
+                List<string> keys = null;
+                foreach (var kv in _pendingBrackets)
+                {
+                    var pb = kv.Value;
+                    if (pb.Placed || pb.Entry == null || pb.EntryDeadlineUtc == default(DateTime) || now < pb.EntryDeadlineUtc) continue;
+                    var st = pb.Entry.OrderState;
+                    if (st == OrderState.Filled || st == OrderState.Cancelled || st == OrderState.Rejected) continue;
+                    (keys ?? (keys = new List<string>())).Add(kv.Key);
+                    (expired ?? (expired = new List<PendingBracket>())).Add(pb);
+                }
+                if (keys != null) foreach (var k in keys) _pendingBrackets.Remove(k);
+            }
+            if (expired == null) return;
+            foreach (var pb in expired)
+            {
+                try { pb.Entry.Account.Cancel(new[] { pb.Entry }); LogMsg("Bracket entry timed out, cancelled: " + pb.Entry.OrderId); }
+                catch (Exception ex) { LogMsg("Bracket timeout cancel error: " + ex.Message); }
+            }
+        }
+
         private OperationResult WcfCancelAllOrders(string accountName)
         {
             try
@@ -722,6 +883,7 @@ namespace NinjaTrader.NinjaScript.AddOns
             {
                 // Catch accounts added at runtime (broker reconnect, new sim account).
                 SubscribeToAccountEvents();
+                ExpireStaleBracketEntries();
 
                 var host = _wcfHost;
                 if (host == null) return;

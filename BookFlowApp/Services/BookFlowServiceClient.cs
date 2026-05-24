@@ -91,6 +91,9 @@ namespace BookFlow.App.Services
         public Task<OrderAck> SubmitOrderAsync(OrderRequest request)
             => InvokeAsync(c => c.SubmitOrder(request));
 
+        public Task<OrderAck> SubmitBracketOrderAsync(BracketOrderRequest request)
+            => InvokeAsync(c => c.SubmitBracketOrder(request));
+
         public Task<OperationResult> CancelAllOrdersAsync(string accountName)
             => InvokeAsync(c => c.CancelAllOrders(accountName));
 

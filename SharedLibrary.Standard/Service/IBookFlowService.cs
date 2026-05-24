@@ -38,6 +38,11 @@ namespace BookFlow.Shared.Service
         [OperationContract]
         OrderAck SubmitOrder(OrderRequest request);
 
+        /// <summary>Submits a bracketed entry; on fill the host places an OCO target+stop pair
+        /// server-side (see <see cref="BracketOrderRequest"/>). Reply is the entry's broker ack.</summary>
+        [OperationContract]
+        OrderAck SubmitBracketOrder(BracketOrderRequest request);
+
         /// <summary>Cancels every working order on the given account. Empty = server resolves the eligible account.</summary>
         [OperationContract]
         OperationResult CancelAllOrders(string accountName);

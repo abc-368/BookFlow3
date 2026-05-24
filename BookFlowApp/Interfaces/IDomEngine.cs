@@ -62,6 +62,9 @@ namespace BookFlow.App.Interfaces
 
         /// <summary>Instrument tick size from NT8 instrument metadata.</summary>
         decimal TickSize { get; }
+
+        /// <summary>Decayed aggressive-flow toxicity in [0,1]; 1 = fully one-sided flow.</summary>
+        double FlowToxicity { get; }
         
         /// <summary>
         /// Clears all DOM data structures including order books, price levels, and market data.
@@ -116,6 +119,14 @@ namespace BookFlow.App.Interfaces
         /// <param name="limitPrice">Limit price for the order.</param>
         /// <returns>Order status response.</returns>
         Task<OrderStatusMessage> PlaceLimitOrderAsync(OrderCommand.OrderAction action, int quantity, double limitPrice);
+
+        /// <summary>
+        /// Submits a bracketed entry; the NT8 host attaches an OCO target/stop pair on fill
+        /// (offsets in ticks). A non-zero <paramref name="entryTimeoutSeconds"/> auto-cancels an
+        /// unfilled limit entry.
+        /// </summary>
+        Task<BookFlow.Shared.Service.OrderAck> SubmitBracketOrderAsync(
+            bool isBuy, bool entryIsLimit, double entryLimitPrice, int quantity, int targetTicks, int stopTicks, int entryTimeoutSeconds = 0);
 
         /// <summary>
         /// Cancels all working orders for this instrument.

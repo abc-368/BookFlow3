@@ -306,17 +306,17 @@ Everything below was built after Increments 1–5 landed. It sits on top of the 
 - Files: `DomGridWindow.xaml(.cs)`, `Models/DomRowData.cs`, `DomViewModel`.
 
 ### 11.6 Signal feed — docked panel + readable labels + direction
-- **Docked panel** beside the ladder (toggled by the `Σ` button), stretching to the ladder height — replaced the old popup; append-only feed capped at 60 entries.
+- **Docked panel** beside the ladder (toggled by the `Σ` button), replacing the old popup. (Superseded by §11.12: it's now a full-height right rail with a virtualizing, scrollable feed capped at 200.)
 - **Plain-English labels** carrying magnitude + price: e.g. `Spoof bid +120/-115 @ 5000.00`, `Iceberg ask 50 hidden @ 5000.25`, `Bid pulled 76 (≤5t of 5000.00)`, `Buy aggression 60 vs 5`. (Withdrawal size is a vicinity aggregate over the detection window — clarified in the label so it isn't mistaken for a single-level depth.)
 - **Direction arrows** — ▲ green (up) / ▼ red (down) / • gray, **bold when the signal is strong** (magnitude ≥ 2× threshold, or imbalance ≥ 0.85). Mapping documented in code (e.g. spoof bid → ▼ since fake pressure reverses when pulled).
 - Files: `Models/SignalFeedItem.cs`, `DomViewModel.OnSignal`, `DomGridWindow.xaml`.
 
 ### 11.7 Signal reliability meter — prediction power, scored by price level (not time)
-- `SignalReliabilityTracker` (in `SharedLibrary.Standard/Analytics`) forward-evaluates each emitted signal by **price-level barriers**: target = anchor ± `PredictionEvalTicks` in the predicted direction, stop = the same against. Reaching target before stop = WIN, stop first = LOSS (a first-passage / triple-barrier test).
+- `SignalReliabilityTracker` (in `SharedLibrary.Standard/Analytics`) forward-evaluates each emitted signal by **price-level barriers**: WIN if price reaches +`PredictionTargetTicks` in the predicted direction before −`PredictionStopTicks` against (asymmetric allowed, e.g. 6/10 — a first-passage / triple-barrier test). **Note:** this is a hit-rate at *those barriers with zero costs*, not a P&L predictor — to make "green" describe what you trade, set these to match your bracket; real P&L/costs are tracked by NT8.
 - Resolved outcomes accumulate a **per-type hit-rate** (Beta(2,2)-smoothed). A new feed line is stamped with that type's hit-rate **as known at print time** — past lines are never revised, so there is no look-ahead bias and the UI stays append-only.
 - **Visual:** a right-aligned 5-segment meter `▰▰▰▱▱`, gray while "learning" (< `ReliabilityMinSamples` resolved), then red < 45% → amber → green > 60%; tooltip shows the rate and sample count.
 - **Performance:** `RegisterSignal` / `OnPriceSample` / `GetReliability` are O(pending)/O(1), run inside the existing 4 Hz tick. Pending list capped at 64 (drop-oldest); reset on `ClearAllData`. The L1/L2 path, book updates, and 60 fps render loop are untouched.
-- New tunables on `DomSettings`: `PredictionEvalTicks` (default 4), `ReliabilityMinSamples` (default 5).
+- Configurable success definition on `DomSettings`: `PredictionTargetTicks` / `PredictionStopTicks` (default 4/4, asymmetric allowed), `ReliabilityMinSamples` (default 5), surfaced in the Signals tab. Auto-trade default bracket also defaults to 4/4 so "green" matches the default trade.
 - Files: `SignalReliabilityTracker.cs`, `MicrostructureDetector.cs` (signal carries `ReliabilityBars/Ratio/Samples/Learning`), `DomEngine.OnMicrostructureTick`, `SignalFeedItem.cs`, `DomGridWindow.xaml`.
 
 ### 11.8 Professional DOM settings dialog
@@ -331,5 +331,58 @@ Everything below was built after Increments 1–5 landed. It sits on top of the 
 - .NET Reactor obfuscation was removed from the build (per `*.dotnet_reactor.targets` being disabled) to keep builds and debugging transparent.
 
 ### 11.11 Test coverage
-- xUnit project (`BookFlow.Tests`, net9.0-windows) — **47 tests**, all green. Covers `SharedRingBuffer`, WCF contract mapping, `DomRowData`, `DomEngine` (incl. snapshot seed and the locked-market trade-attribution P0 fix), `L2AnalyticsWindow`, `MicrostructureDetector` (incl. bias), and `SignalReliabilityTracker`.
+- xUnit project (`BookFlow.Tests`, net9.0-windows) — **62 tests**, all green. Covers `SharedRingBuffer`, WCF contract mapping, `DomRowData`, `DomEngine` (incl. snapshot seed, the locked-market trade-attribution P0 fix, and bracket-request construction), `L2AnalyticsWindow`, `MicrostructureDetector` (incl. bias), `SignalReliabilityTracker`, and `SignalAutoTrader` (arming/green-gate/concurrency).
+
+### 11.12 Signals rail — full-height + virtualized scrolling
+- The order-flow panel is now a **full-height right rail** spanning the whole DOM window (outer 2-column grid; panel at `Grid.Column="1" Grid.RowSpan="4"`), not just the ladder row — so it matches the window height and resizes with it. When the `Σ` toggle is off, the column collapses to 0 width (window shrinks back to ladder width).
+- The feed list became a **virtualizing `ListBox`** (`VirtualizingStackPanel` + `Recycling`, selection chrome stripped). Only on-screen rows are realized → O(visible) render cost regardless of count, and it scrolls once entries exceed the visible area.
+- `MaxFeed` raised 60 → **200** for useful scroll-back; the cap bounds memory/visual tree. Justification: the feed is event-driven and sparse (signals fire a few/sec at most, never on the hot tick path or 60 fps loop), so scrolling a virtualized capped list has negligible cost.
+- Files: `DomGridWindow.xaml`, `DomViewModel` (`MaxFeed`).
+
+### 11.13 Per-type feed muting (manual + auto-hide-when-red)
+- Per-instrument `DomSettings` flags: `ShowSpoofingSignals` / `ShowIcebergSignals` / `ShowWithdrawalSignals` / `ShowAggressionSignals` (default on) + `AutoHideUnreliableSignals` (default off).
+- Filtering is at the **display layer** (`DomViewModel.ShouldPrintSignal`): detection and reliability scoring keep running for muted types, so their meters stay accurate and re-enabling shows the current rate instantly. Manual toggle off → not rendered (feed + ladder glyph). `AutoHideUnreliableSignals` additionally mutes a type whose hit-rate is in the meter's **red band (<45%)** with enough resolved samples (`!ReliabilityLearning`) — **overrides** an enabled toggle while red, recovers automatically.
+- UI: per-detector "Show in feed" checkboxes + a master "Auto-hide types whose reliability stays red" in the Signals tab.
+- Files: `DomSettings.cs`, `DomViewModel.ShouldPrintSignal`, `GridSettingsWindow.xaml`.
+
+### 11.14 Auto-trade on reliable signals — server-side OCO brackets (Increment 1: foundation)
+Goal: when a signal *type* proves reliable (green meter), act on it — enter in the forecast direction with a configurable size, attach a profit target **and** a protective stop (both in ticks). The chosen design **leverages NT8's server-side OCO** rather than hand-rolling exit management client-side.
+
+**Decision (entry vs exit timing):** the exit pair is placed **after the entry fills**, by the AddOn, not in parallel — this avoids the naked-order risk of a pre-placed exit when a limit entry never fills, anchors the target/stop to the *actual* average fill, and sizes the exit to the *actual* filled quantity.
+
+**Increment 1 shipped — the bracket mechanism (server-side + full client plumbing):**
+- New contract `BracketOrderRequest` (side, market/limit + entry price, qty, `TargetTicks`, `StopTicks`) + `IBookFlowService.SubmitBracketOrder`.
+- `BookFlowAddOn.WcfSubmitBracketOrder` creates the entry as `OrderEntry.Automated` and registers a `PendingBracket` (keyed by entry OrderId). On `OnOrderUpdate` → `OrderState.Filled`, `TryPlaceBrackets` submits a **profit-target limit + protective-stop StopMarket with the same `oco` tag** → NT8/broker manages one-cancels-other server-side. Priced off `AverageFillPrice`, sized to `Filled`, rounded to the tick grid; idempotent per entry; registry cleared on shutdown.
+- Plumbing: `BookFlowServiceImpl`/`BookFlowServiceHost` handler delegate, `BookFlowServiceClient.SubmitBracketOrderAsync`, `IDataFeed.SubmitBracketOrderAsync` (+ test stub), `NT8DirectDataFeed`, and `DomEngine.SubmitBracketOrderAsync(isBuy, entryIsLimit, entryLimitPrice, qty, targetTicks, stopTicks)` — the single call the auto-trader will use.
+- **Tested:** client-side request construction (direction mapping, ticks, instrument) is unit-tested via a stub feed (`DomEngineBracketTests`). **Not yet validated live:** the server-side fill→OCO path needs a running NT8 + Sim account.
+- **Limitations (v1):** brackets are placed only on a *full* fill (a partially-filled-then-cancelled limit entry would leave an unbracketed partial).
+
+**Increment 2 shipped — the client trigger layer:**
+- `SignalAutoTrader` (`BookFlowApp/Engine`) — on a signal it checks: master armed → type enabled → bias non-neutral → **green** (`ReliabilityRatio*100 ≥ ReliabilityGreenPercent` and not learning) → concurrency. If clear, it fires one bracket via `DomEngine.SubmitBracketOrderAsync`. Aggression → market; level types → limit at `signal price + OffsetTicks*tick` (signed, literal). Runs independently of feed muting.
+- **Concurrency = one auto-position per instrument** via a small state machine (Idle → PendingEntry → InPosition → Idle), driven by `OnPositionChanged` (signed qty from the VM). A stuck PendingEntry self-resets after `AutoTradeEntryTimeoutSeconds + 3s`.
+- **Entry timeout** added to the server path: `BracketOrderRequest.EntryTimeoutSeconds`; the AddOn cancels an unfilled *limit* entry past its deadline on the 1 s heartbeat (`ExpireStaleBracketEntries`).
+- **Configurable green gate**: `DomSettings.ReliabilityGreenPercent` (default 60, range 50–95) drives both the auto-trade gate **and** the meter's green band (`SignalFeedItem.GreenThreshold`), so "green" means the same thing everywhere.
+- **Settings**: per-type `AutoTradeConfig` (`Enabled`, `UseMarketOrder`, `OffsetTicks` signed, `TargetTicks`, `StopTicks`, `Size`) for the 4 detectors, plus master `AutoTradeArmed` (off by default), `ReliabilityGreenPercent`, `AutoTradeEntryTimeoutSeconds`. UI: a new **Auto-Trade** tab in `GridSettingsWindow` + an **ARM** toggle (red kill-switch) on the DOM toolbar bound to `AutoTradeArmed`.
+- Tested: `SignalAutoTraderTests` (8) cover armed/enabled/green/learning/neutral gating, aggression-forces-market, limit-offset pricing, and the one-position-per-instrument guard.
+- **Still recommend validating on a Sim101 account first** — the live order path (entry + fill→OCO + timeout cancel) needs a running NT8 to exercise.
+- Files: `Service/ServiceContracts.cs`, `Service/IBookFlowService.cs`, `NinjaTrader/BookFlowAddOn.cs`, `Service/BookFlowServiceImpl.cs`, `Service/BookFlowServiceHost.cs`, `Services/BookFlowServiceClient.cs`, `Interfaces/IDataFeed.cs`, `Services/NT8DirectDataFeed.cs`, `Engine/DomEngine.cs`.
+
+### 11.15 New, literature-grounded signals: OFI + book imbalance
+Added the two best-evidenced short-horizon microstructure predictors as first-class signal types (`MicrostructureSignalType.OrderFlowImbalance = 5`, `BookImbalance = 6`), reusing the existing add/cancel/trade accumulators in `L2AnalyticsWindow`:
+- **Order-flow imbalance (OFI)** — Cont–Kukanov–Stoikov, generalized over a near-touch vicinity (`OfiRadiusTicks`, default 3): `OFI = (bidAdds − bidCancels − sellsHittingBid) − (askAdds − askCancels − buysLiftingAsk)` over the interval. Positive → buy pressure (UP). Threshold `OfiMinImbalance` (default 150). The single best-supported predictor in the literature.
+- **Book imbalance** — `(Qbid − Qask)/(Qbid + Qask)` at the touch (read from the current snapshot, no diff needed). Threshold `BookImbalanceMinRatio` (0.6) + `BookImbalanceMinSize` (50). A documented one-tick-ahead skew.
+- Fully **observable/measurable** now: they flow through the feed (OFI green/red by bias, book imbalance purple), per-type **Show-in-feed** toggles (`ShowOfiSignals`/`ShowBookImbalanceSignals`), thresholds in the Signals tab, and the **reliability meter** (so you can see their real hit-rate at your configured success barrier).
+- **Deliberately NOT auto-traded yet** — `SignalAutoTrader.ConfigFor` returns null for them, so they're observe-only. Per the "measure before you trust" workflow: watch their meters first, then we add auto-trade configs once they prove out.
+- Follow-ups: **VPIN-style toxicity filter** now shipped (see §11.16). Still deferred: **micro-price** for a better entry/fair-value anchor (no consumer until OFI/book are auto-traded).
+- Honest caveat: these are very short-horizon, small, cost/latency-sensitive edges, and on NT8's aggregated L2 (no per-order queue position) they lose some sharpness — better-founded than the original four, not magic.
+- Tested: `MicrostructureDetectorTests` add OFI (bid-adds/ask-cancels → UP) and book-imbalance (bid-heavy → UP) cases.
+- Files: `Analytics/MicrostructureDetector.cs`, `Contracts/DomSettings.cs`, `Engine/DomEngine.cs`, `Models/SignalFeedItem.cs`, `ViewModels/DomViewModel.cs`, `Views/GridSettingsWindow.xaml`.
+
+### 11.16 Auto-trade flow-toxicity gate (VPIN-style)
+A regime filter that stands the auto-trader aside in toxic (one-sided / informed) flow, where fills are worst:
+- `DomEngine` maintains a **decayed aggressive buy/sell volume** (updated in `UpdateLastTrade`, which already classifies hit-bid vs lift-ask) and exposes `FlowToxicity = |buy − sell| / (buy + sell)` ∈ [0,1] (1 = fully one-sided). Per-trade decay ≈ 0.97. Reset on `ClearAllData`.
+- `SignalAutoTrader` takes an optional toxicity provider and **skips entry when `FlowToxicity > AutoTradeMaxToxicity`** (`DomSettings.AutoTradeMaxToxicity`, default **1.0 = off**, range 0–1). Default-off means no behavior change until you tune it down.
+- UI: "Max flow toxicity (0–1; 1 = off)" on the Auto-Trade tab. Tested: `SignalAutoTraderTests` (toxic > max → no fire; calm ≤ max → fires).
+- A pragmatic VPIN stand-in (no volume-bucket machinery); tune live. The full micro-price work remains deferred.
+- Files: `Engine/DomEngine.cs`, `Interfaces/IDomEngine.cs`, `Contracts/DomSettings.cs`, `Engine/SignalAutoTrader.cs`, `ViewModels/DomViewModel.cs`, `Views/GridSettingsWindow.xaml`.
 

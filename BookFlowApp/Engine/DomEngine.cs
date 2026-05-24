@@ -57,6 +57,13 @@ namespace BookFlow.App.Engine
         private long _lastTradedVolume;
         private decimal? _lastBidHitPrice; // last price a market sell executed against (hit the bid)
         private decimal? _lastAskHitPrice; // last price a market buy executed against (lifted the ask)
+
+        // Flow toxicity (VPIN-style): decayed aggressive buy/sell volume; toxicity = |buy-sell|/(buy+sell)
+        // in [0,1]. High = one-sided/informed flow (bad fills) — used as an auto-trade regime gate.
+        private double _toxBuyVol;
+        private double _toxSellVol;
+        private double _flowToxicity;
+        private const double ToxicityDecay = 0.97; // per-trade decay (~23 trades to half-weight)
         private decimal _tickSize = 0.25m; // Provided from controller
         private decimal _pointValue = 50m;  // Provided from controller
         
@@ -108,6 +115,7 @@ namespace BookFlow.App.Engine
         public int PriceDecimalPlaces => _priceDecimalPlaces;
         public decimal TickSize => _tickSize;
         public decimal PointValue => _pointValue;
+        public double FlowToxicity => _flowToxicity;
         
         public event EventHandler<bool>? ConnectionStatusChanged;
         
@@ -561,6 +569,13 @@ namespace BookFlow.App.Engine
             // Q1: remember the last execution price per aggressor side.
             if (hitBid) _lastBidHitPrice = price;
             else _lastAskHitPrice = price;
+
+            // Update decayed flow toxicity (under _syncLock via ProcessMessage).
+            _toxBuyVol *= ToxicityDecay;
+            _toxSellVol *= ToxicityDecay;
+            if (hitBid) _toxSellVol += volume; else _toxBuyVol += volume;
+            double toxTotal = _toxBuyVol + _toxSellVol;
+            _flowToxicity = toxTotal > 0 ? Math.Abs(_toxBuyVol - _toxSellVol) / toxTotal : 0.0;
 
             // Q5: accrue aggressive trade volume (split by aggressor side) at this level.
             _analytics.OnTrade(price, volume, hitBid);
@@ -1026,6 +1041,10 @@ namespace BookFlow.App.Engine
                 _detector.WithdrawalRadiusTicks = _settings.WithdrawalRadiusTicks;
                 _detector.AggressionMinVolume = _settings.AggressionMinVolume;
                 _detector.AggressionMinImbalance = _settings.AggressionMinImbalance;
+                _detector.OfiMinImbalance = _settings.OfiMinImbalance;
+                _detector.OfiRadiusTicks = _settings.OfiRadiusTicks;
+                _detector.BookImbalanceMinRatio = _settings.BookImbalanceMinRatio;
+                _detector.BookImbalanceMinSize = _settings.BookImbalanceMinSize;
 
                 var curr = GetVicinityAnalytics(MicroRadiusTicks); // copies under _syncLock
                 decimal? bb, ba;
@@ -1035,7 +1054,8 @@ namespace BookFlow.App.Engine
 
                 // Reliability: resolve outstanding predictions against the current mid first, then
                 // stamp each new signal with the prior hit-rate of its type and start tracking it.
-                _reliability.EvalTicks = _settings.PredictionEvalTicks;
+                _reliability.TargetTicks = _settings.PredictionTargetTicks;
+                _reliability.StopTicks = _settings.PredictionStopTicks;
                 _reliability.MinSamples = _settings.ReliabilityMinSamples;
                 decimal? mid = (bb.HasValue && ba.HasValue) ? (bb.Value + ba.Value) / 2m : (bb ?? ba);
                 long? midTicks = (mid.HasValue && _tickSize > 0)
@@ -1140,7 +1160,36 @@ namespace BookFlow.App.Engine
             
             return await _dataFeed.SubmitOrderAsync(InstrumentName, orderCommand);
         }
-        
+
+        /// <summary>
+        /// Submits a bracketed entry for this instrument. The NT8 host attaches an OCO
+        /// target+stop pair (priced in ticks from the fill) when the entry fills. Account is
+        /// left to the server to resolve.
+        /// </summary>
+        public async Task<BookFlow.Shared.Service.OrderAck> SubmitBracketOrderAsync(
+            bool isBuy, bool entryIsLimit, double entryLimitPrice, int quantity, int targetTicks, int stopTicks,
+            int entryTimeoutSeconds = 0)
+        {
+            if (_dataFeed == null)
+                throw new InvalidOperationException("Not connected to data feed");
+
+            var request = new BookFlow.Shared.Service.BracketOrderRequest
+            {
+                ClientOrderId = Guid.NewGuid().ToString(),
+                AccountName = string.Empty,
+                InstrumentName = InstrumentName,
+                Side = isBuy ? BookFlow.Shared.Service.BookFlowSide.Buy : BookFlow.Shared.Service.BookFlowSide.Sell,
+                EntryIsLimit = entryIsLimit,
+                EntryLimitPrice = entryLimitPrice,
+                Quantity = quantity,
+                TargetTicks = targetTicks,
+                StopTicks = stopTicks,
+                EntryTimeoutSeconds = entryTimeoutSeconds,
+                ClientUtcTime = DateTime.UtcNow,
+            };
+            return await _dataFeed.SubmitBracketOrderAsync(request);
+        }
+
         public void ClearAllData()
         {
             lock (_syncLock)
@@ -1171,6 +1220,7 @@ namespace BookFlow.App.Engine
 
                 // Drop in-flight predictions and per-type hit-rate history.
                 _reliability.Reset();
+                _toxBuyVol = _toxSellVol = _flowToxicity = 0;
             }
             
             // Publish empty ladder update to clear UI

@@ -35,6 +35,13 @@ namespace BookFlow.Tests
         public Task<bool> ConnectAsync() => Task.FromResult(true);
         public Task DisconnectAsync() => Task.CompletedTask;
         public Task<OrderStatusMessage> SubmitOrderAsync(string instrumentName, OrderCommand orderCommand) => Task.FromResult(new OrderStatusMessage());
+
+        public BracketOrderRequest? LastBracketRequest { get; private set; }
+        public Task<OrderAck> SubmitBracketOrderAsync(BracketOrderRequest request)
+        {
+            LastBracketRequest = request;
+            return Task.FromResult(new OrderAck { Status = BookFlowOrderStatus.Submitted, NtOrderId = "STUB-1" });
+        }
         public Task<PortfolioStateMessage> RequestPortfolioStateAsync() => Task.FromResult(new PortfolioStateMessage());
         public Task<List<TickerInfo>> GetAvailableInstrumentsAsync() => Task.FromResult(new List<TickerInfo>());
 

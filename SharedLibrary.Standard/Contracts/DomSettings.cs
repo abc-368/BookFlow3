@@ -57,10 +57,38 @@ namespace BookFlow.Shared.Contracts
         private int _withdrawalRadiusTicks = 5;
         private int _aggressionMinVolume = 30;
         private double _aggressionMinImbalance = 0.6;
+        private int _ofiMinImbalance = 150;
+        private int _ofiRadiusTicks = 3;
+        private double _bookImbalanceMinRatio = 0.6;
+        private int _bookImbalanceMinSize = 50;
 
-        // Signal reliability scoring: how a fired signal's prediction is graded against later price.
-        private int _predictionEvalTicks = 4;     // barrier distance (ticks) in the predicted direction
+        // Signal reliability scoring — defines "success": a win is price reaching +PredictionTargetTicks
+        // before -PredictionStopTicks (asymmetric allowed, e.g. 6 / 10). Tune these to match the move
+        // you actually trade, so the meter's hit-rate describes that move.
+        private int _predictionTargetTicks = 4;
+        private int _predictionStopTicks = 4;
         private int _reliabilityMinSamples = 5;   // resolved samples before the strength meter lights up
+
+        // Per-type feed visibility — mute a noisy detector without disabling detection/scoring
+        // (so reliability meters stay current and re-enabling is instant).
+        private bool _showSpoofingSignals = true;
+        private bool _showIcebergSignals = true;
+        private bool _showWithdrawalSignals = true;
+        private bool _showAggressionSignals = true;
+        private bool _showOfiSignals = true;
+        private bool _showBookImbalanceSignals = true;
+        private bool _autoHideUnreliableSignals = false; // mute any type whose hit-rate stays red
+
+        // Auto-trade: master arm (gates everything; the kill switch), the configurable "green"
+        // hit-rate gate, the limit-entry auto-cancel timeout, and per-type configs.
+        private bool _autoTradeArmed = false;
+        private int _reliabilityGreenPercent = 60;     // a signal type at/above this % is "green" / actionable
+        private int _autoTradeEntryTimeoutSeconds = 10; // cancel an unfilled limit entry after this
+        private double _autoTradeMaxToxicity = 1.0;      // suppress auto-entry when flow toxicity exceeds this (1 = off)
+        private readonly AutoTradeConfig _spoofingAutoTrade = new AutoTradeConfig();
+        private readonly AutoTradeConfig _icebergAutoTrade = new AutoTradeConfig();
+        private readonly AutoTradeConfig _withdrawalAutoTrade = new AutoTradeConfig();
+        private readonly AutoTradeConfig _aggressionAutoTrade = new AutoTradeConfig { UseMarketOrder = true };
 
         // Per-column configuration collection
         private ObservableCollection<ColumnConfig> _columns = new ObservableCollection<ColumnConfig>();
@@ -109,8 +137,29 @@ namespace BookFlow.Shared.Contracts
         public int WithdrawalRadiusTicks { get => _withdrawalRadiusTicks; set { if (_withdrawalRadiusTicks != value && value >= 1 && value <= 256) { _withdrawalRadiusTicks = value; OnPropertyChanged(); } } }
         public int AggressionMinVolume { get => _aggressionMinVolume; set { if (_aggressionMinVolume != value && value >= 1 && value <= 1000000) { _aggressionMinVolume = value; OnPropertyChanged(); } } }
         public double AggressionMinImbalance { get => _aggressionMinImbalance; set { if (_aggressionMinImbalance != value && value >= 0 && value <= 1) { _aggressionMinImbalance = value; OnPropertyChanged(); } } }
-        public int PredictionEvalTicks { get => _predictionEvalTicks; set { if (_predictionEvalTicks != value && value >= 1 && value <= 100) { _predictionEvalTicks = value; OnPropertyChanged(); } } }
+        public int OfiMinImbalance { get => _ofiMinImbalance; set { if (_ofiMinImbalance != value && value >= 1 && value <= 1000000) { _ofiMinImbalance = value; OnPropertyChanged(); } } }
+        public int OfiRadiusTicks { get => _ofiRadiusTicks; set { if (_ofiRadiusTicks != value && value >= 1 && value <= 256) { _ofiRadiusTicks = value; OnPropertyChanged(); } } }
+        public double BookImbalanceMinRatio { get => _bookImbalanceMinRatio; set { if (_bookImbalanceMinRatio != value && value >= 0 && value <= 1) { _bookImbalanceMinRatio = value; OnPropertyChanged(); } } }
+        public int BookImbalanceMinSize { get => _bookImbalanceMinSize; set { if (_bookImbalanceMinSize != value && value >= 1 && value <= 1000000) { _bookImbalanceMinSize = value; OnPropertyChanged(); } } }
+        public int PredictionTargetTicks { get => _predictionTargetTicks; set { if (_predictionTargetTicks != value && value >= 1 && value <= 1000) { _predictionTargetTicks = value; OnPropertyChanged(); } } }
+        public int PredictionStopTicks { get => _predictionStopTicks; set { if (_predictionStopTicks != value && value >= 1 && value <= 1000) { _predictionStopTicks = value; OnPropertyChanged(); } } }
         public int ReliabilityMinSamples { get => _reliabilityMinSamples; set { if (_reliabilityMinSamples != value && value >= 1 && value <= 1000) { _reliabilityMinSamples = value; OnPropertyChanged(); } } }
+        public bool ShowSpoofingSignals { get => _showSpoofingSignals; set { if (_showSpoofingSignals != value) { _showSpoofingSignals = value; OnPropertyChanged(); } } }
+        public bool ShowIcebergSignals { get => _showIcebergSignals; set { if (_showIcebergSignals != value) { _showIcebergSignals = value; OnPropertyChanged(); } } }
+        public bool ShowWithdrawalSignals { get => _showWithdrawalSignals; set { if (_showWithdrawalSignals != value) { _showWithdrawalSignals = value; OnPropertyChanged(); } } }
+        public bool ShowAggressionSignals { get => _showAggressionSignals; set { if (_showAggressionSignals != value) { _showAggressionSignals = value; OnPropertyChanged(); } } }
+        public bool ShowOfiSignals { get => _showOfiSignals; set { if (_showOfiSignals != value) { _showOfiSignals = value; OnPropertyChanged(); } } }
+        public bool ShowBookImbalanceSignals { get => _showBookImbalanceSignals; set { if (_showBookImbalanceSignals != value) { _showBookImbalanceSignals = value; OnPropertyChanged(); } } }
+        public bool AutoHideUnreliableSignals { get => _autoHideUnreliableSignals; set { if (_autoHideUnreliableSignals != value) { _autoHideUnreliableSignals = value; OnPropertyChanged(); } } }
+
+        public bool AutoTradeArmed { get => _autoTradeArmed; set { if (_autoTradeArmed != value) { _autoTradeArmed = value; OnPropertyChanged(); } } }
+        public int ReliabilityGreenPercent { get => _reliabilityGreenPercent; set { if (_reliabilityGreenPercent != value && value >= 50 && value <= 95) { _reliabilityGreenPercent = value; OnPropertyChanged(); } } }
+        public int AutoTradeEntryTimeoutSeconds { get => _autoTradeEntryTimeoutSeconds; set { if (_autoTradeEntryTimeoutSeconds != value && value >= 1 && value <= 120) { _autoTradeEntryTimeoutSeconds = value; OnPropertyChanged(); } } }
+        public double AutoTradeMaxToxicity { get => _autoTradeMaxToxicity; set { if (_autoTradeMaxToxicity != value && value >= 0 && value <= 1) { _autoTradeMaxToxicity = value; OnPropertyChanged(); } } }
+        public AutoTradeConfig SpoofingAutoTrade => _spoofingAutoTrade;
+        public AutoTradeConfig IcebergAutoTrade => _icebergAutoTrade;
+        public AutoTradeConfig WithdrawalAutoTrade => _withdrawalAutoTrade;
+        public AutoTradeConfig AggressionAutoTrade => _aggressionAutoTrade;
         #endregion
 
         public void ResetToDefaults()
@@ -148,8 +197,25 @@ namespace BookFlow.Shared.Contracts
             WithdrawalRadiusTicks = 5;
             AggressionMinVolume = 30;
             AggressionMinImbalance = 0.6;
-            PredictionEvalTicks = 4;
+            OfiMinImbalance = 150;
+            OfiRadiusTicks = 3;
+            BookImbalanceMinRatio = 0.6;
+            BookImbalanceMinSize = 50;
+            PredictionTargetTicks = 4;
+            PredictionStopTicks = 4;
             ReliabilityMinSamples = 5;
+            ShowSpoofingSignals = true;
+            ShowIcebergSignals = true;
+            ShowWithdrawalSignals = true;
+            ShowAggressionSignals = true;
+            ShowOfiSignals = true;
+            ShowBookImbalanceSignals = true;
+            AutoHideUnreliableSignals = false;
+
+            AutoTradeArmed = false;
+            ReliabilityGreenPercent = 60;
+            AutoTradeEntryTimeoutSeconds = 10;
+            AutoTradeMaxToxicity = 1.0;
 
             Columns = new ObservableCollection<ColumnConfig>
             {
